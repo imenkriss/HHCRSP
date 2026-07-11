@@ -1,0 +1,5 @@
+id,care_type,priority,preferred_caregiver
+P1,Cardio,High,S1
+P2,Diabetes,Medium,S2
+P3,General,Low,S3
+P4,Cardio,High,S1
