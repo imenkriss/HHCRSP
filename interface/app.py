@@ -1,12 +1,54 @@
 import streamlit as st
 import pandas as pd
+from pathlib import Path
 from main import run_hhcop_pipeline
 
 
 st.set_page_config(page_title="HHCOP RAG Multi-Agent System", layout="wide")
 
+PATIENTS_FILE = Path(__file__).resolve().parent.parent / "data" / "patients.csv"
+CAREGIVERS_FILE = Path(__file__).resolve().parent.parent / "data" / "soignants.csv"
+
+
+def add_patient(patient: dict) -> tuple[bool, str]:
+    patients = pd.read_csv(PATIENTS_FILE)
+
+    if patient["id"] in patients["id"].astype(str).values:
+        return False, f"Le patient {patient['id']} existe déjà."
+
+    patients = pd.concat([patients, pd.DataFrame([patient])], ignore_index=True)
+    patients.to_csv(PATIENTS_FILE, index=False)
+    return True, f"Le patient {patient['id']} a été ajouté."
+
 st.title("HHCOP - RAG + LLM + Multi-Agent System")
 st.write("Interface de visualisation des différentes étapes du système.")
+
+with st.sidebar:
+    st.header("Ajouter un patient")
+    caregivers = pd.read_csv(CAREGIVERS_FILE)
+
+    with st.form("add_patient_form", clear_on_submit=True):
+        patient_id = st.text_input("Identifiant", placeholder="P5").strip()
+        care_type = st.selectbox("Type de soins", ["Cardio", "Diabetes", "General"])
+        priority = st.selectbox("Priorité", ["High", "Medium", "Low"])
+        preferred_caregiver = st.selectbox(
+            "Soignant préféré", caregivers["id"].astype(str).tolist()
+        )
+        submitted = st.form_submit_button("Ajouter le patient")
+
+    if submitted:
+        if not patient_id:
+            st.error("L'identifiant du patient est obligatoire.")
+        else:
+            was_added, message = add_patient({
+                "id": patient_id,
+                "care_type": care_type,
+                "priority": priority,
+                "preferred_caregiver": preferred_caregiver,
+            })
+            (st.success if was_added else st.error)(message)
+            if was_added:
+                st.rerun()
 
 # Entrée utilisateur
 query = st.text_input(

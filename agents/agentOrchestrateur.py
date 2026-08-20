@@ -1,21 +1,31 @@
-from agents.agentsPatients import PatientAgent
-from agents.agentsSoignants import CaregiverAgent
+from agents.agentsPatients import PatientAgent, PatientRegistry
+from agents.agentsSoignants import SoignantAgent
+
+CaregiverAgent = SoignantAgent
 
 class Orchestrator:
     def __init__(self, patients: list[dict], caregivers: list[dict]):
-        self.patients = patients
+        self.patient_registry = PatientRegistry(patients)
         self.caregivers = caregivers
 
+    def receive_patients(self, patients: list[dict]) -> None:
+        self.patient_registry.register_many(patients)
+
+    def get_patients_by_care_type(self, care_type: str) -> list[dict]:
+        return [patient.get_information()
+                for patient in self.patient_registry.by_care_type(care_type)]
+
+    def get_patients_by_priority(self) -> list[dict]:
+        return [patient.get_information()
+                for patient in self.patient_registry.by_priority()]
+
     def find_patient(self, patient_id: str):
-        for patient in self.patients:
-            if patient["id"] == patient_id:
-                return PatientAgent(patient)
-        return None
+        return self.patient_registry.get(patient_id)
 
     def find_caregiver(self, caregiver_id: str):
         for caregiver in self.caregivers:
             if caregiver["id"] == caregiver_id:
-                return CaregiverAgent(caregiver)
+                return caregiver
         return None
 
     def get_candidate_caregivers(self, care_type: str) -> list[dict]:
@@ -24,15 +34,13 @@ class Orchestrator:
         for caregiver in self.caregivers:
             # on garde les disponibles
             if caregiver["available"] and caregiver["skill"] == care_type:
-                agent = CaregiverAgent(caregiver)
-                candidates.append(agent.get_information())
+                candidates.append(caregiver)
 
         # si aucun soignant exact, on peut chercher les "General"
         if not candidates:
             for caregiver in self.caregivers:
                 if caregiver["available"] and caregiver["skill"] == "General":
-                    agent = CaregiverAgent(caregiver)
-                    candidates.append(agent.get_information())
+                    candidates.append(caregiver)
 
         return candidates
 
@@ -51,7 +59,7 @@ class Orchestrator:
         if llm_output["caregiver_id"]:
             caregiver_agent = self.find_caregiver(llm_output["caregiver_id"])
             if caregiver_agent:
-                caregiver_info = caregiver_agent.get_information()
+                caregiver_info = caregiver_agent
 
         # si on a un patient, chercher des candidats pour réaffectation
         if patient_info:
