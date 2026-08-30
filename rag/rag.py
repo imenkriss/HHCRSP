@@ -13,8 +13,9 @@ class SimpleRAG:
 
         context = []
 
-        for document in retrieved_documents:
+        for result in retrieved_documents:
 
-            context.append(document["description"])
+            # retrieve() renvoie {"document": {...}, "score": n}
+            context.append(result["document"]["description"])
 
         return context

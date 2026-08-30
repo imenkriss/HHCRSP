@@ -1,6 +1,10 @@
 from agents.agentsPatients import PatientAgent
 from agents.agentsSoignants import CaregiverAgent
 
+# R002 : un soignant dont le retard dépasse ce seuil doit être remplacé
+MAX_ACCEPTABLE_DELAY = 20
+
+
 class Orchestrator:
     def __init__(self, patients: list[dict], caregivers: list[dict]):
         self.patients = patients
@@ -18,21 +22,35 @@ class Orchestrator:
                 return CaregiverAgent(caregiver)
         return None
 
+    def _is_eligible(self, caregiver: dict) -> bool:
+        """
+        Un soignant est éligible s'il est disponible, pas trop en retard (R002)
+        et pas déjà au maximum de ses heures (C002).
+        """
+        if not caregiver["available"]:
+            return False
+
+        if caregiver["delay"] > MAX_ACCEPTABLE_DELAY:
+            return False
+
+        if caregiver["current_workload"] >= caregiver["max_work_hours"]:
+            return False
+
+        return True
+
     def get_candidate_caregivers(self, care_type: str) -> list[dict]:
         candidates = []
 
+        # C004 : seuls les soignants qualifiés pour ce type de soin
         for caregiver in self.caregivers:
-            # on garde les disponibles
-            if caregiver["available"] and caregiver["skill"] == care_type:
-                agent = CaregiverAgent(caregiver)
-                candidates.append(agent.get_information())
+            if self._is_eligible(caregiver) and caregiver["skill"] == care_type:
+                candidates.append(CaregiverAgent(caregiver).get_information())
 
-        # si aucun soignant exact, on peut chercher les "General"
+        # repli : les soignants polyvalents ("General")
         if not candidates:
             for caregiver in self.caregivers:
-                if caregiver["available"] and caregiver["skill"] == "General":
-                    agent = CaregiverAgent(caregiver)
-                    candidates.append(agent.get_information())
+                if self._is_eligible(caregiver) and caregiver["skill"] == "General":
+                    candidates.append(CaregiverAgent(caregiver).get_information())
 
         return candidates
 

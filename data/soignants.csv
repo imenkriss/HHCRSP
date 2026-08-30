@@ -1,5 +1,8 @@
-id,skill,max_work_hours
-S1,Cardio,8
-S2,Diabetes,8
-S3,General,8
-S4,Cardio,8
+id,skill,max_work_hours,current_workload,available,delay
+S1,Cardio,8,6,True,0
+S2,Diabetes,8,3,True,35
+S3,General,8,7,True,0
+S4,Cardio,8,2,True,5
+S5,Diabetes,8,4,True,0
+S6,General,8,1,False,0
+S7,Diabetes,7,3,True,0

@@ -1,3 +1,6 @@
+from agents.agentOrchestrateur import MAX_ACCEPTABLE_DELAY
+
+
 class DecisionEngine:
     def __init__(self):
         pass
@@ -11,7 +14,7 @@ class DecisionEngine:
 
         # 1) garder le soignant initial s'il est encore utilisable
         if caregiver_info:
-            if caregiver_info["available"] and caregiver_info["delay"] <= 20:
+            if caregiver_info["available"] and caregiver_info["delay"] <= MAX_ACCEPTABLE_DELAY:
                 return {
                     "status": "assigned",
                     "patient_id": patient_info["id"],
