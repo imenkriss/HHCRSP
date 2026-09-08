@@ -1,21 +1,15 @@
-"""
-HHCOP - Point d'entrée du système RAG + LLM + Multi-Agents.
-Usage :
-    python3 main.py                     # démo avec le scénario par défaut
-    python3 main.py "Patient P4 ..."    # démo avec un scénario personnalisé
-"""
 
 import csv
 import importlib
 import json
 import os
 import sys
-from sklearn import metrics
 
 from rag.rag import SimpleRAG
 from llm.raisonner import LLMRaisonner
 from agents.agentOrchestrateur import Orchestrator
 from complexity.metrics import ComplexityMetrics
+from optimisation.nsga2 import NSGA2
 # le paquet "décision" contient un caractère accentué : import dynamique
 DecisionEngine = importlib.import_module("décision.decision").DecisionEngine
 
@@ -29,9 +23,9 @@ BOOL_FIELDS = ("available",)
 
 
 def _convert(row: dict) -> dict:
-    """
-    Convertit les champs CSV (toujours des chaînes) vers leurs types réels.
-    """
+    
+    #Convertit les champs CSV(chaines)02vers leurs types réels.
+    
     converted = {}
 
     for key, value in row.items():
@@ -52,49 +46,50 @@ def _convert(row: dict) -> dict:
 
 
 def load_csv(filename: str) -> list[dict]:
-    """
-    Charge un fichier CSV du dossier data/ en liste de dictionnaires typés.
-    """
+    
+    # Charge un fichier CSV du dossier data(en liste dictonnaire)
+    
     path = os.path.join(DATA_DIR, filename)
 
     if not os.path.exists(path):
-        raise FileNotFoundError(f"Fichier de données introuvable : {path}")
+        raise FileNotFoundError(f"Fichier introuvable : {path}")
 
     with open(path, newline="", encoding="utf-8") as handle:
         return [_convert(row) for row in csv.DictReader(handle)]
 
 
 def load_dataset() -> tuple[list[dict], list[dict]]:
-    """
-    Charge les patients et les soignants.
-    """
+    #Charge les patients et les soignants.
+
     return load_csv("patients.csv"), load_csv("soignants.csv")
 
-def run_hhcop_pipeline(query: str = DEFAULT_QUERY) -> dict:
-    """
-    Exécute la chaîne complète :
-    dataset -> RAG -> LLM -> orchestrateur -> décision.
+def run_hhcop_pipeline(
+    query: str = DEFAULT_QUERY,
+    model: str = "qwen3:4b",
+    patient_event: dict | None = None,
+    caregiver_event: dict | None = None,
+) -> dict:
 
-    Les métriques de complexité sont collectées
-    pendant l'exécution.
-    """
 
     metrics = ComplexityMetrics()
+    total_start = metrics.start()
+
+    # DATASET
+    start = metrics.start()
     patients, soignants = load_dataset()
+
+    if patient_event:
+        patients.append(patient_event)
+
+    if caregiver_event:
+        soignants.append(caregiver_event)
+
+    metrics.record("Dataset", start)
+
     # Complexité
     metrics.problem_size(patients, soignants)
     metrics.caregiver_delay(soignants)
     metrics.workload_balance(soignants)
-
-
-    total_start = metrics.start()
-    # DATASET
-
-    start = metrics.start()
-
-    patients, soignants = load_dataset()
-
-    metrics.record("Dataset", start)
 
     # 1. RAG
 
@@ -109,7 +104,8 @@ def run_hhcop_pipeline(query: str = DEFAULT_QUERY) -> dict:
 
     start = metrics.start()
 
-    llm_output = LLMRaisonner().analyze(
+    reasoner = LLMRaisonner(model=model)
+    llm_output = reasoner.analyze(
         query,
         retrieved_docs
     )
@@ -132,11 +128,9 @@ def run_hhcop_pipeline(query: str = DEFAULT_QUERY) -> dict:
     )
 
    
-    # AGENT INTERACTIONS
-    metrics.record_interactions(
-        len(patients),
-        len(soignants)
-    )
+    # interactions entre agents
+    metrics.agent_interactions(patients, soignants)
+
 
     # 4. DECISION ENGINE
 
@@ -153,6 +147,25 @@ def run_hhcop_pipeline(query: str = DEFAULT_QUERY) -> dict:
         start
     )
 
+    assignments = []
+    if final_decision.get("status") == "assigned":
+        assignments.append({
+            "patient_id": final_decision.get("patient_id"),
+            "caregiver_id": final_decision.get("assigned_caregiver"),
+        })
+
+    metrics.unassigned_patients(patients, assignments)
+    metrics.patient_satisfaction(patients, assignments)
+
+    # 5. OPTIMISATION NSGA-II
+    start = metrics.start()
+
+    optimization_results = NSGA2(
+        patients,
+        soignants
+    ).optimize()
+
+    metrics.record("NSGA-II Optimization", start)
 
     metrics.record(
         "Total Pipeline",
@@ -165,9 +178,11 @@ def run_hhcop_pipeline(query: str = DEFAULT_QUERY) -> dict:
         "patients": patients,
         "soignants": soignants,
         "retrieved_docs": retrieved_docs,
+        "llm_model": reasoner.model,
         "llm_output": llm_output,
         "orchestration_output": orchestration_output,
         "final_decision": final_decision,
+        "optimization": optimization_results,
         "complexity": metrics.get_metrics()
     }
 
@@ -239,18 +254,18 @@ def print_demo(results: dict) -> None:
 
         for component, data in complexity.items():
 
-            if "execution_time" in data:
+            if "execution_time_sec" in data:
 
                 print(
                     f"  {component:25} : "
-                    f"{data['execution_time']:.6f} secondes"
+                    f"{data['execution_time_sec']:.6f} secondes"
                 )
 
-            elif component == "Agent Interactions":
+            elif component == "agent_interactions":
 
-                print(f"  Patients              : {data['patients']}")
-                print(f"  Soignants             : {data['caregivers']}")
-                print(f"  Interactions          : {data['interactions']}")
+                print(f"  Patients              : {data['patient_agents']}")
+                print(f"  Soignants             : {data['caregiver_agents']}")
+                print(f"  Interactions          : {data['possible_interactions']}")
                 print(f"  Complexité théorique  : {data['complexity']}")
 
     else:
@@ -259,8 +274,18 @@ def print_demo(results: dict) -> None:
 
     print()
 
+    _section("7. OPTIMISATION NSGA-II")
+    optimization = results.get("optimization", [])
+
+    if optimization:
+        for index, candidate in enumerate(optimization, start=1):
+            print(f"  Solution {index} - objectifs : {candidate['objectives']}")
+            print(f"    Affectations : {candidate['solution']}")
+    else:
+        print("  Aucune solution d'optimisation disponible.")
+
 
 if __name__ == "__main__":
 
     user_query = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else DEFAULT_QUERY
-print_demo(run_hhcop_pipeline(user_query))
+    print_demo(run_hhcop_pipeline(user_query))

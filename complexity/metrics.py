@@ -6,38 +6,77 @@ class ComplexityMetrics:
     def __init__(self):
         self.metrics = {}
 
-    # Taille du problème
-    def problem_size(self, patients, caregivers):
-        self.metrics["problem_size"] = {
-            "patients": len(patients),
-            "caregivers": len(caregivers),
-            "potential_assignments": len(patients) * len(caregivers)
+    # Temps d'exécution d'un composant
+    def start(self):
+        return time.perf_counter()
+
+    def record(self, component, start):
+        self.metrics[component] = {
+            "execution_time_sec": round(
+                time.perf_counter() - start, 6
+            )
         }
 
-    # Retard total des soignants
+    # Taille du problème HHCOP
+    def problem_size(self, patients, caregivers):
+        p = len(patients)
+        c = len(caregivers)
+
+        self.metrics["problem_size"] = {
+            "patients": p,
+            "caregivers": c,
+            "possible_assignments": p * c,
+            "search_space_complexity": f"O({p} × {c})"
+        }
+
+    # Complexité des interactions entre agents
+    def agent_interactions(self, patients, caregivers):
+        p = len(patients)
+        c = len(caregivers)
+
+        self.metrics["agent_interactions"] = {
+            "patient_agents": p,
+            "caregiver_agents": c,
+            "possible_interactions": p * c,
+            "complexity": "O(P × C)"
+        }
+
+    # Retard des soignants
     def caregiver_delay(self, caregivers):
-        total = sum(c.get("delay", 0) for c in caregivers)
+        delays = [
+            c.get("delay", 0)
+            for c in caregivers
+        ]
+
+        total = sum(delays)
 
         self.metrics["caregiver_delay"] = {
             "total_minutes": total,
-            "average_minutes": total / len(caregivers)
-            if caregivers else 0
+            "average_minutes": round(
+                total / len(delays), 2
+            ) if delays else 0,
+            "delayed_caregivers": sum(
+                d > 0 for d in delays
+            )
         }
 
-    # Équilibre de charge
+    # Équilibre de la charge de travail
     def workload_balance(self, caregivers):
         workloads = [
             c.get("current_workload", 0)
             for c in caregivers
         ]
 
-        difference = (
-            max(workloads) - min(workloads)
-            if workloads else 0
-        )
+        if not workloads:
+            difference = 0
+            average = 0
+        else:
+            difference = max(workloads) - min(workloads)
+            average = sum(workloads) / len(workloads)
 
         self.metrics["workload_balance"] = {
-            "difference": difference
+            "average_workload": round(average, 2),
+            "max_difference": difference
         }
 
     # Patients non affectés
@@ -45,47 +84,57 @@ class ComplexityMetrics:
         assigned = {
             a.get("patient_id")
             for a in assignments
+            if a.get("patient_id")
         }
 
-        count = sum(
-            1 for p in patients
-            if p.get("id") not in assigned
+        unassigned = sum(
+            p.get("id") not in assigned
+            for p in patients
         )
 
         self.metrics["unassigned_patients"] = {
-            "count": count
+            "count": unassigned,
+            "percentage": round(
+                100 * unassigned / len(patients), 2
+            ) if patients else 0
         }
 
     # Satisfaction des patients
     def patient_satisfaction(self, patients, assignments):
         if not patients:
-            return 0
+            score = 0
+        else:
+            assignments_by_patient = {
+                a.get("patient_id"): a
+                for a in assignments
+            }
 
-        score = 0
+            total = 0
 
-        for patient in patients:
+            for patient in patients:
+                assignment = assignments_by_patient.get(
+                    patient.get("id")
+                )
 
-            assignment = next(
-                (
-                    a for a in assignments
-                    if a.get("patient_id") == patient.get("id")
-                ),
-                None
-            )
+                if not assignment:
+                    continue
 
-            if assignment:
-                if (
-                    assignment.get("caregiver_id")
-                    == patient.get("preferred_caregiver")
+                caregiver_id = assignment.get(
+                    "caregiver_id",
+                    assignment.get("assigned_caregiver")
+                )
+
+                if caregiver_id == patient.get(
+                    "preferred_caregiver"
                 ):
-                    score += 100
+                    total += 100
                 else:
-                    score += 70
+                    total += 70
 
-        satisfaction = score / len(patients)
+            score = total / len(patients)
 
         self.metrics["patient_satisfaction"] = {
-            "score_percent": satisfaction
+            "score_percent": round(score, 2)
         }
 
     def get_metrics(self):
