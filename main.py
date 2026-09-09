@@ -63,6 +63,47 @@ def load_dataset() -> tuple[list[dict], list[dict]]:
 
     return load_csv("patients.csv"), load_csv("soignants.csv")
 
+
+def append_csv_record(filename: str, record: dict) -> bool:
+    """Ajoute un enregistrement au CSV si son identifiant n'existe pas."""
+    path = os.path.join(DATA_DIR, filename)
+    rows = load_csv(filename)
+
+    if any(row.get("id") == record.get("id") for row in rows):
+        return False
+
+    with open(path, "a", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=record.keys())
+        writer.writerow(record)
+
+    return True
+
+
+def save_patient(patient: dict) -> bool:
+    return append_csv_record(
+        "patients.csv",
+        {
+            "id": patient["id"],
+            "care_type": patient["care_type"],
+            "priority": patient["priority"],
+            "preferred_caregiver": patient.get("preferred_caregiver", ""),
+        },
+    )
+
+
+def save_caregiver(caregiver: dict) -> bool:
+    return append_csv_record(
+        "soignants.csv",
+        {
+            "id": caregiver["id"],
+            "skill": caregiver["skill"],
+            "max_work_hours": caregiver.get("max_work_hours", 8),
+            "current_workload": caregiver.get("current_workload", 0),
+            "available": caregiver.get("available", True),
+            "delay": caregiver.get("delay", 0),
+        },
+    )
+
 def run_hhcop_pipeline(
     query: str = DEFAULT_QUERY,
     model: str = "qwen3:4b",
@@ -160,10 +201,12 @@ def run_hhcop_pipeline(
     # 5. OPTIMISATION NSGA-II
     start = metrics.start()
 
-    optimization_results = NSGA2(
+    optimizer = NSGA2(
         patients,
         soignants
-    ).optimize()
+    )
+    optimization_results = optimizer.optimize()
+    optimization_analysis = optimizer.complexity_analysis()
 
     metrics.record("NSGA-II Optimization", start)
 
@@ -183,6 +226,7 @@ def run_hhcop_pipeline(
         "orchestration_output": orchestration_output,
         "final_decision": final_decision,
         "optimization": optimization_results,
+        "optimization_analysis": optimization_analysis,
         "complexity": metrics.get_metrics()
     }
 

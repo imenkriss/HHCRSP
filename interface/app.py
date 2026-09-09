@@ -11,7 +11,7 @@ if PROJECT_ROOT not in sys.path:
 import pandas as pd
 import streamlit as st
 
-from main import DEFAULT_QUERY, run_hhcop_pipeline
+from main import DEFAULT_QUERY, run_hhcop_pipeline, save_caregiver, save_patient
 
 
 st.set_page_config(page_title="HHCOP RAG Multi-Agent System", layout="wide")
@@ -19,96 +19,152 @@ st.set_page_config(page_title="HHCOP RAG Multi-Agent System", layout="wide")
 st.title("Home Healthcare optimization problem under uncertainty using Rag and muti agent system")
 st.write("Interface de visualisation du système.")
 
-# Événements transmis aux agents, au RAG et au MAS
-st.header("Nouveaux événements")
-patient_event_type = st.selectbox(
-    "Événement patient",
-    ["Aucun", "Urgence patient existant", "Nouveau patient"]
-)
+# Tableau de bord administrateur : les demandes acceptées sont transmises
+# au RAG, aux agents et au moteur de décision.
+if "admin_requests" not in st.session_state:
+    st.session_state.admin_requests = []
 
-patient_event = None
-patient_id = None
+with st.sidebar:
+    st.header("Administration")
+    st.caption("Créer, prioriser et valider les demandes.")
 
-if patient_event_type == "Urgence patient existant":
-    patient_id = st.text_input("Identifiant du patient", "P2")
-    patient_event_query = st.text_input(
-        "Détail de l'urgence",
-        "Le patient demande une prise en charge urgente."
-    )
-elif patient_event_type == "Nouveau patient":
-    patient_id = st.text_input("Identifiant du nouveau patient", "P10")
-    patient_care_type = st.selectbox(
-        "Type de soin du nouveau patient",
-        ["Cardio", "Diabetes", "General"]
-    )
-    patient_priority = st.selectbox(
-        "Priorité",
-        ["High", "Medium", "Low"]
-    )
-    patient_preferred = st.text_input(
-        "Soignant préféré (optionnel)",
-        ""
-    )
-    patient_event_query = st.text_input(
-        "Demande du nouveau patient",
-        "Le nouveau patient demande une prise en charge."
-    )
-    patient_event = {
-        "id": patient_id,
-        "care_type": patient_care_type,
-        "priority": patient_priority,
-        "preferred_caregiver": patient_preferred,
-    }
+    with st.form("new_request_form", clear_on_submit=True):
+        request_type = st.selectbox(
+            "Type de demande",
+            ["Nouveau patient", "Urgence patient", "Nouveau soignant"]
+        )
+        request_id = st.text_input("Identifiant", "P10")
+        request_priority = st.selectbox(
+            "Priorité d'urgence",
+            ["Critique", "Haute", "Normale", "Basse"]
+        )
 
-caregiver_event_type = st.selectbox(
-    "Événement soignant",
-    ["Aucun", "Soignant disponible", "Nouveau soignant disponible"]
-)
+        if request_type in ["Nouveau patient", "Urgence patient"]:
+            request_care_type = st.selectbox(
+                "Type de soin",
+                ["Cardio", "Diabetes", "General"]
+            )
+            request_preferred = st.text_input(
+                "Soignant préféré",
+                ""
+            )
+            request_message = st.text_input(
+                "Message du patient",
+                "Le patient demande une prise en charge urgente."
+            )
+        else:
+            request_skill = st.selectbox(
+                "Compétence du soignant",
+                ["Cardio", "Diabetes", "General"]
+            )
+            request_message = st.text_input(
+                "Message du soignant",
+                "Le soignant est disponible et demande un travail."
+            )
 
-caregiver_event = None
-caregiver_id = None
+        add_request = st.form_submit_button("Ajouter la demande")
 
-if caregiver_event_type == "Soignant disponible":
-    caregiver_id = st.text_input("Identifiant du soignant", "S5")
-    caregiver_event_query = st.text_input(
-        "Demande du soignant",
-        "Le soignant est disponible et demande un nouveau travail."
-    )
-elif caregiver_event_type == "Nouveau soignant disponible":
-    caregiver_id = st.text_input("Identifiant du nouveau soignant", "S8")
-    caregiver_skill = st.selectbox(
-        "Compétence du nouveau soignant",
-        ["Cardio", "Diabetes", "General"]
-    )
-    caregiver_event_query = st.text_input(
-        "Demande du nouveau soignant",
-        "Le nouveau soignant est disponible et demande un travail."
-    )
-    caregiver_event = {
-        "id": caregiver_id,
-        "skill": caregiver_skill,
-        "max_work_hours": 8,
-        "current_workload": 0,
-        "available": True,
-        "delay": 0,
-    }
+    if add_request:
+        request = {
+            "type": request_type,
+            "id": request_id.strip(),
+            "priority": request_priority,
+            "message": request_message,
+            "status": "En attente",
+        }
+        if request_type in ["Nouveau patient", "Urgence patient"]:
+            request.update({
+                "care_type": request_care_type,
+                "preferred_caregiver": request_preferred.strip(),
+            })
+        else:
+            request["skill"] = request_skill
+        st.session_state.admin_requests.append(request)
+        st.rerun()
 
-# Entrée utilisateur
+    st.subheader("Demandes en attente")
+    accepted_requests = []
+    for index, request in enumerate(st.session_state.admin_requests):
+        st.markdown(
+            f"**{request['type']} · {request['id']}**  "
+            f"({request['priority']})"
+        )
+        request["status"] = st.selectbox(
+            "Décision administrateur",
+            ["En attente", "Acceptée", "Refusée"],
+            index=["En attente", "Acceptée", "Refusée"].index(
+                request["status"]
+            ),
+            key=f"request_status_{index}",
+        )
+        if request["status"] == "Acceptée":
+            accepted_requests.append(request)
+
+    if st.button("Vider les demandes"):
+        st.session_state.admin_requests = []
+        st.rerun()
+
+# Scénario principal et modèle utilisés par le pipeline.
 query = st.text_input("Entrez un scénario HHCOP :", DEFAULT_QUERY)
 model = st.text_input("Modèle Ollama :", "qwen3:4b")
 
+patient_event = None
+caregiver_event = None
 event_parts = []
-if patient_event_type != "Aucun":
+saved_messages = []
+
+for request in accepted_requests:
     event_parts.append(
-        f"Patient {patient_id}: {patient_event_query}"
+        f"{request['type']} {request['id']} ({request['priority']}): "
+        f"{request['message']}"
     )
-if caregiver_event_type != "Aucun":
-    event_parts.append(
-        f"Caregiver {caregiver_id}: {caregiver_event_query}"
-    )
+    if request["type"] == "Nouveau patient":
+        patient_event = {
+            "id": request["id"],
+            "care_type": request.get("care_type", "General"),
+            "priority": request["priority"],
+            "preferred_caregiver": request.get("preferred_caregiver", ""),
+        }
+        if not request.get("saved_to_csv"):
+            if save_patient(patient_event):
+                saved_messages.append(
+                    f"Patient {request['id']} ajouté à patients.csv."
+                )
+            else:
+                saved_messages.append(
+                    f"Patient {request['id']} existe déjà dans patients.csv."
+                )
+            request["saved_to_csv"] = True
+    elif request["type"] == "Urgence patient":
+        # L'urgence concerne un patient déjà chargé depuis le CSV.
+        # Elle est transmise dans la requête sans créer de doublon.
+        patient_event = None
+    else:
+        caregiver_event = {
+            "id": request["id"],
+            "skill": request["skill"],
+            "max_work_hours": 8,
+            "current_workload": 0,
+            "available": True,
+            "delay": 0,
+        }
+        if not request.get("saved_to_csv"):
+            if save_caregiver(caregiver_event):
+                saved_messages.append(
+                    f"Soignant {request['id']} ajouté à soignants.csv."
+                )
+            else:
+                saved_messages.append(
+                    f"Soignant {request['id']} existe déjà dans soignants.csv."
+                )
+            request["saved_to_csv"] = True
+
+for message in saved_messages:
+    st.success(message)
+
 if event_parts:
     query = query + "\n\n" + "\n".join(event_parts)
-    st.info("Requête envoyée au RAG et au MAS : " + query)
+    st.info("Demandes acceptées envoyées au RAG et au MAS : " + query)
 
 if st.button("Exécuter le système"):
 
@@ -277,6 +333,27 @@ if st.button("Exécuter le système"):
             st.subheader("Indicateurs opérationnels")
             st.json(available_quality_metrics)
 
+        st.subheader("Résultats théoriques")
+        st.markdown(
+            "La complexité théorique décrit le coût prévu selon la taille "
+            "du problème. Les temps ci-dessus sont les mesures pratiques "
+            "de cette exécution."
+        )
+        theoretical_data = {
+            "Recherche des candidats": "O(P × C)",
+            "Interactions entre agents": "O(P × C)",
+            "Évaluation d'une solution": "O(N × C)",
+            "Front de Pareto": "O(P²)",
+        }
+        st.dataframe(
+            pd.DataFrame(
+                theoretical_data.items(),
+                columns=["Opération", "Complexité"]
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+
     else:
 
         st.info(
@@ -289,6 +366,11 @@ if st.button("Exécuter le système"):
     optimization = results.get("optimization", [])
 
     if optimization:
+        analysis = results.get("optimization_analysis", {})
+        if analysis:
+            st.subheader("Analyse théorique de l'optimisation")
+            st.json(analysis)
+
         optimization_data = []
 
         for index, candidate in enumerate(optimization, start=1):

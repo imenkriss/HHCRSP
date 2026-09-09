@@ -191,3 +191,21 @@ class NSGA2:
             ]
 
         return population
+
+    def complexity_analysis(self):
+        patients_count = len(self.patients)
+        caregivers_count = len(self.caregivers)
+        population_size = self.population_size
+        generations = self.generations
+
+        return {
+            "patients": patients_count,
+            "caregivers": caregivers_count,
+            "population_size": population_size,
+            "generations": generations,
+            "evaluation_complexity": "O(N × C)",
+            "pareto_front_complexity": "O(P²)",
+            "total_complexity": "O(G × P × (N × C + P²))",
+            "evaluation_operations": generations * population_size
+            * patients_count * caregivers_count,
+        }
