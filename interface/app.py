@@ -1,7 +1,6 @@
 import os
 import sys
 
-# Permet de lancer "streamlit run interface/app.py" depuis la racine du projet :
 # on ajoute le dossier parent au sys.path pour retrouver le module main.
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -11,7 +10,12 @@ if PROJECT_ROOT not in sys.path:
 import pandas as pd
 import streamlit as st
 
-from main import DEFAULT_QUERY, run_hhcop_pipeline, save_caregiver, save_patient
+from main import (
+    DEFAULT_QUERY,
+    run_hhcop_pipeline,
+    save_caregiver,
+    save_patient,
+)
 
 
 st.set_page_config(page_title="HHCOP RAG Multi-Agent System", layout="wide")
@@ -80,6 +84,7 @@ with st.sidebar:
         else:
             request["skill"] = request_skill
         st.session_state.admin_requests.append(request)
+        st.session_state.analysis_results = []
         st.rerun()
 
     st.subheader("Demandes en attente")
@@ -102,31 +107,39 @@ with st.sidebar:
 
     if st.button("Vider les demandes"):
         st.session_state.admin_requests = []
+        st.session_state.analysis_results = []
         st.rerun()
 
 # Scénario principal et modèle utilisés par le pipeline.
 query = st.text_input("Entrez un scénario HHCOP :", DEFAULT_QUERY)
 model = st.text_input("Modèle Ollama :", "qwen3:4b")
 
-patient_event = None
-caregiver_event = None
 event_parts = []
 saved_messages = []
+requests_to_process = []
 
 for request in accepted_requests:
-    event_parts.append(
-        f"{request['type']} {request['id']} ({request['priority']}): "
-        f"{request['message']}"
-    )
     if request["type"] == "Nouveau patient":
-        patient_event = {
+        event_parts.append(
+            f"{request['type']} {request['id']} ({request['priority']}): "
+            f"{request['message']}"
+        )
+        patient_record = {
             "id": request["id"],
             "care_type": request.get("care_type", "General"),
             "priority": request["priority"],
             "preferred_caregiver": request.get("preferred_caregiver", ""),
         }
+        requests_to_process.append({
+            "label": f"Patient {request['id']} - nouvelle demande",
+            "query": (
+                f"Patient {request['id']} requests {request.get('care_type', 'General')} "
+                f"care with priority {request['priority']}. "
+                f"{request['message']}"
+            ),
+        })
         if not request.get("saved_to_csv"):
-            if save_patient(patient_event):
+            if save_patient(patient_record):
                 saved_messages.append(
                     f"Patient {request['id']} ajouté à patients.csv."
                 )
@@ -136,11 +149,26 @@ for request in accepted_requests:
                 )
             request["saved_to_csv"] = True
     elif request["type"] == "Urgence patient":
+        event_parts.append(
+            f"{request['type']} {request['id']} ({request['priority']}): "
+            f"{request['message']}"
+        )
         # L'urgence concerne un patient déjà chargé depuis le CSV.
         # Elle est transmise dans la requête sans créer de doublon.
-        patient_event = None
+        requests_to_process.append({
+            "label": f"Patient {request['id']} - urgence",
+            "query": (
+                f"Patient {request['id']} has an urgent request for "
+                f"{request.get('care_type', 'General')} care. "
+                f"Priority: {request['priority']}. {request['message']}"
+            ),
+        })
     else:
-        caregiver_event = {
+        event_parts.append(
+            f"{request['type']} {request['id']} ({request['priority']}): "
+            f"{request['message']}"
+        )
+        caregiver_record = {
             "id": request["id"],
             "skill": request["skill"],
             "max_work_hours": 8,
@@ -149,7 +177,7 @@ for request in accepted_requests:
             "delay": 0,
         }
         if not request.get("saved_to_csv"):
-            if save_caregiver(caregiver_event):
+            if save_caregiver(caregiver_record):
                 saved_messages.append(
                     f"Soignant {request['id']} ajouté à soignants.csv."
                 )
@@ -159,6 +187,7 @@ for request in accepted_requests:
                 )
             request["saved_to_csv"] = True
 
+
 for message in saved_messages:
     st.success(message)
 
@@ -166,16 +195,50 @@ if event_parts:
     query = query + "\n\n" + "\n".join(event_parts)
     st.info("Demandes acceptées envoyées au RAG et au MAS : " + query)
 
-if st.button("Exécuter le système"):
+if not requests_to_process:
+    requests_to_process.append({
+        "label": "Scénario manuel",
+        "query": query,
+    })
+
+if "analysis_results" not in st.session_state:
+    st.session_state.analysis_results = []
+
+if st.button("Exécuter le système") or st.session_state.analysis_results:
 
     try:
         with st.spinner(f"Analyse en cours avec Ollama ({model})..."):
-            results = run_hhcop_pipeline(
-                query,
-                model=model,
-                patient_event=patient_event,
-                caregiver_event=caregiver_event,
-            )
+            if st.session_state.analysis_results:
+                all_results = st.session_state.analysis_results
+            else:
+                all_results = []
+                for request_to_process in requests_to_process:
+                    all_results.append(
+                        (
+                            request_to_process["label"],
+                            run_hhcop_pipeline(
+                                request_to_process["query"],
+                                model=model,
+                            ),
+                        )
+                    )
+                st.session_state.analysis_results = all_results
+
+            if len(all_results) > 1:
+                selected_label = st.selectbox(
+                    "Résultat à afficher",
+                    [label for label, _ in all_results],
+                )
+                results = next(
+                    result
+                    for label, result in all_results
+                    if label == selected_label
+                )
+                st.success(
+                    f"{len(all_results)} demandes analysées."
+                )
+            else:
+                results = all_results[0][1]
     except Exception as error:
         st.error(
             "Impossible d'exécuter le pipeline. Vérifiez qu'Ollama est ouvert "
@@ -357,7 +420,7 @@ if st.button("Exécuter le système"):
     else:
 
         st.info(
-            "Aucune métrique de complexité disponible."
+            "Aucune métrique de complexité."
         )
 
     # 7. Optimisation NSGA-II

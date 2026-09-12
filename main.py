@@ -16,7 +16,7 @@ DecisionEngine = importlib.import_module("décision.decision").DecisionEngine
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 
-DEFAULT_QUERY = "Patient P2 is urgent and caregiver S2 is delayed."
+DEFAULT_QUERY = "Analyze patient P3 and find a compatible caregiver."
 
 INT_FIELDS = ("max_work_hours", "current_workload", "delay")
 BOOL_FIELDS = ("available",)
@@ -180,7 +180,8 @@ def run_hhcop_pipeline(
     final_decision = DecisionEngine().choose_best_caregiver(
         orchestration_output["patient_info"],
         orchestration_output["caregiver_info"],
-        orchestration_output["candidate_caregivers"]
+        orchestration_output["candidate_caregivers"],
+        urgent=llm_output.get("urgency", False),
     )
 
     metrics.record(

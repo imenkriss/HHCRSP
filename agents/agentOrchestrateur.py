@@ -1,55 +1,43 @@
 from agents.agentsPatients import PatientAgent
 from agents.agentsSoignants import CaregiverAgent
-
-# R002 : un soignant dont le retard dépasse ce seuil doit être remplacé
-MAX_ACCEPTABLE_DELAY = 20
+from agents.compatibilite import caregiver_can_visit, caregiver_is_eligible
 
 
 class Orchestrator:
     def __init__(self, patients: list[dict], caregivers: list[dict]):
         self.patients = patients
         self.caregivers = caregivers
+        self.patients_by_id = {patient["id"]: patient for patient in patients}
+        self.caregivers_by_id = {
+            caregiver["id"]: caregiver for caregiver in caregivers
+        }
 
     def find_patient(self, patient_id: str):
-        for patient in self.patients:
-            if patient["id"] == patient_id:
-                return PatientAgent(patient)
-        return None
+        patient = self.patients_by_id.get(patient_id)
+        return PatientAgent(patient) if patient else None
 
     def find_caregiver(self, caregiver_id: str):
-        for caregiver in self.caregivers:
-            if caregiver["id"] == caregiver_id:
-                return CaregiverAgent(caregiver)
-        return None
+        caregiver = self.caregivers_by_id.get(caregiver_id)
+        return CaregiverAgent(caregiver) if caregiver else None
 
     def _is_eligible(self, caregiver: dict) -> bool:
         """
-        Un soignant est éligible s'il est disponible, pas trop en retard (R002)
-        et pas déjà au maximum de ses heures (C002).
+        Un soignant est éligible s'il est disponible.
         """
-        if not caregiver["available"]:
-            return False
-
-        if caregiver["delay"] > MAX_ACCEPTABLE_DELAY:
-            return False
-
-        if caregiver["current_workload"] >= caregiver["max_work_hours"]:
-            return False
-
-        return True
+        return caregiver_is_eligible(caregiver)
 
     def get_candidate_caregivers(self, care_type: str) -> list[dict]:
         candidates = []
 
         # C004 : seuls les soignants qualifiés pour ce type de soin
         for caregiver in self.caregivers:
-            if self._is_eligible(caregiver) and caregiver["skill"] == care_type:
+            if caregiver_can_visit(caregiver, care_type):
                 candidates.append(CaregiverAgent(caregiver).get_information())
 
         # repli : les soignants polyvalents ("General")
         if not candidates:
             for caregiver in self.caregivers:
-                if self._is_eligible(caregiver) and caregiver["skill"] == "General":
+                if caregiver_can_visit(caregiver, care_type):
                     candidates.append(CaregiverAgent(caregiver).get_information())
 
         return candidates
@@ -60,13 +48,13 @@ class Orchestrator:
         candidate_caregivers = []
 
         # récupérer patient
-        if llm_output["patient_id"]:
+        if llm_output.get("patient_id"):
             patient_agent = self.find_patient(llm_output["patient_id"])
             if patient_agent:
                 patient_info = patient_agent.get_information()
 
         # récupérer soignant mentionné dans la requête
-        if llm_output["caregiver_id"]:
+        if llm_output.get("caregiver_id"):
             caregiver_agent = self.find_caregiver(llm_output["caregiver_id"])
             if caregiver_agent:
                 caregiver_info = caregiver_agent.get_information()

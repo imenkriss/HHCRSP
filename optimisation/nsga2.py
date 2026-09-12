@@ -1,5 +1,7 @@
 import random
 
+from agents.compatibilite import caregiver_can_visit
+
 
 class NSGA2:
 
@@ -18,15 +20,7 @@ class NSGA2:
     # Vérifie si un soignant peut prendre le patient
     def is_compatible(self, patient, caregiver):
 
-        if not caregiver.get("available", False):
-            return False
-
-        if caregiver.get("current_workload", 0) >= caregiver.get(
-            "max_work_hours", 0
-        ):
-            return False
-
-        return True
+        return caregiver_can_visit(caregiver, patient.get("care_type", ""))
 
     # Crée une solution aléatoire
     def create_solution(self):
