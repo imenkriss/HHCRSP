@@ -76,7 +76,7 @@ with st.sidebar:
         if request_type in ["Nouveau patient", "Urgence patient"]:
             request.update({
                 "care_type": request_care_type,
-                "preferred_caregiver": request_preferred.strip(),
+                
             })
         else:
             request["skill"] = request_skill
