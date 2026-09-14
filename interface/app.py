@@ -20,8 +20,8 @@ from main import (
 
 st.set_page_config(page_title="HHCOP RAG Multi-Agent System", layout="wide")
 
-st.title("Home Healthcare optimization problem under uncertainty using Rag and muti agent system")
-st.write("Interface de visualisation du système.")
+st.title("Home Healthcare Multi-AGENT Systems")
+
 
 # Tableau de bord administrateur : les demandes acceptées sont transmises
 # au RAG, aux agents et au moteur de décision.
@@ -29,7 +29,7 @@ if "admin_requests" not in st.session_state:
     st.session_state.admin_requests = []
 
 with st.sidebar:
-    st.header("Administration")
+    st.header("Admin")
     st.caption("Créer, prioriser et valider les demandes.")
 
     with st.form("new_request_form", clear_on_submit=True):
@@ -37,10 +37,10 @@ with st.sidebar:
             "Type de demande",
             ["Nouveau patient", "Urgence patient", "Nouveau soignant"]
         )
-        request_id = st.text_input("Identifiant", "P10")
+        request_id = st.text_input("Identifiant", "P..")
         request_priority = st.selectbox(
             "Priorité d'urgence",
-            ["Critique", "Haute", "Normale", "Basse"]
+            [ "Haute", "Normale", "Basse"]
         )
 
         if request_type in ["Nouveau patient", "Urgence patient"]:
@@ -48,10 +48,7 @@ with st.sidebar:
                 "Type de soin",
                 ["Cardio", "Diabetes", "General"]
             )
-            request_preferred = st.text_input(
-                "Soignant préféré",
-                ""
-            )
+            
             request_message = st.text_input(
                 "Message du patient",
                 "Le patient demande une prise en charge urgente."

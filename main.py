@@ -16,7 +16,7 @@ DecisionEngine = importlib.import_module("décision.decision").DecisionEngine
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 
-DEFAULT_QUERY = "Analyze patient P3 and find a compatible caregiver."
+DEFAULT_QUERY = "Analyzer patient need care with High priority"
 
 INT_FIELDS = ("max_work_hours", "current_workload", "delay", "skill_level")
 BOOL_FIELDS = ("available",)
