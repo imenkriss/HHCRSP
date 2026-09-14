@@ -127,11 +127,6 @@ def run_hhcop_pipeline(
 
     metrics.record("Dataset", start)
 
-    # Complexité
-    metrics.problem_size(patients, soignants)
-    metrics.caregiver_delay(soignants)
-    metrics.workload_balance(soignants)
-
     # 1. RAG
 
     start = metrics.start()
@@ -168,38 +163,7 @@ def run_hhcop_pipeline(
         start
     )
 
-   
-    # interactions entre agents
-    metrics.agent_interactions(patients, soignants)
-
-
-    # 4. DECISION ENGINE
-
-    start = metrics.start()
-
-    final_decision = DecisionEngine().choose_best_caregiver(
-        orchestration_output["patient_info"],
-        orchestration_output["caregiver_info"],
-        orchestration_output["candidate_caregivers"],
-        urgent=llm_output.get("urgency", False),
-    )
-
-    metrics.record(
-        "Decision Engine",
-        start
-    )
-
-    assignments = []
-    if final_decision.get("status") == "assigned":
-        assignments.append({
-            "patient_id": final_decision.get("patient_id"),
-            "caregiver_id": final_decision.get("assigned_caregiver"),
-        })
-
-    metrics.unassigned_patients(patients, assignments)
-    metrics.patient_satisfaction(patients, assignments)
-
-    # 5. OPTIMISATION NSGA-II
+    # 4. OPTIMISATION NSGA-II
     start = metrics.start()
 
     optimizer = NSGA2(
@@ -210,6 +174,52 @@ def run_hhcop_pipeline(
     optimization_analysis = optimizer.complexity_analysis()
 
     metrics.record("NSGA-II Optimization", start)
+
+    # 5. DECISION ENGINE : sélection d'un compromis du front de Pareto.
+    # Il ne prend plus une décision locale avant l'optimisation globale.
+    start = metrics.start()
+    selected_optimization = DecisionEngine().choose_pareto_solution(
+        optimization_results
+    )
+    assignments = selected_optimization["solution"] if selected_optimization else []
+    selected_patient = orchestration_output["patient_info"]
+    selected_assignment = next(
+        (
+            assignment for assignment in assignments
+            if selected_patient and assignment["patient_id"] == selected_patient["id"]
+        ),
+        None,
+    )
+    if not selected_patient:
+        final_decision = {
+            "status": "error",
+            "message": "No patient information found in the request.",
+        }
+    elif selected_assignment:
+        final_decision = {
+            "status": "assigned",
+            "patient_id": selected_patient["id"],
+            "assigned_caregiver": selected_assignment["caregiver_id"],
+            "reason": "Assignment selected from the NSGA-II Pareto compromise.",
+        }
+    else:
+        final_decision = {
+            "status": "unassigned",
+            "patient_id": selected_patient["id"],
+            "assigned_caregiver": None,
+            "reason": "No feasible NSGA-II assignment for this patient.",
+        }
+    metrics.record("Decision Engine", start)
+
+    # 6. COMPLEXITÉ ET INDICATEURS : calculés après l'optimisation, sur la
+    # solution réellement retenue et ses paramètres d'exécution.
+    metrics.problem_size(patients, soignants)
+    metrics.agent_interactions(patients, soignants)
+    metrics.caregiver_delay(soignants)
+    metrics.workload_balance(soignants, assignments)
+    metrics.unassigned_patients(patients, assignments)
+    metrics.patient_satisfaction(patients, soignants, assignments)
+    metrics.optimization_indicators(selected_optimization)
 
     metrics.record(
         "Total Pipeline",
@@ -227,6 +237,7 @@ def run_hhcop_pipeline(
         "orchestration_output": orchestration_output,
         "final_decision": final_decision,
         "optimization": optimization_results,
+        "selected_optimization": selected_optimization,
         "optimization_analysis": optimization_analysis,
         "complexity": metrics.get_metrics()
     }

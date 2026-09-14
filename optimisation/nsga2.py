@@ -1,205 +1,152 @@
+"""Optimisation multi-objectifs des affectations HHCOP par front de Pareto."""
+
+from __future__ import annotations
+
 import random
+from typing import Any
 
 from agents.compatibilite import caregiver_can_visit
 
 
 class NSGA2:
+    """Optimise coût, couverture/satisfaction et variance de charge.
 
-    def __init__(
-        self,
-        patients,
-        caregivers,
-        population_size=20,
-        generations=10
-    ):
+    Les champs de coût, de trajet et de durée sont optionnels : les CSV actuels
+    restent donc valides, tout en permettant d'enrichir progressivement le modèle.
+    """
+
+    def __init__(self, patients: list[dict], caregivers: list[dict], population_size: int = 20, generations: int = 10, seed: int | None = 42) -> None:
         self.patients = patients
         self.caregivers = caregivers
-        self.population_size = population_size
-        self.generations = generations
+        self.population_size = max(1, population_size)
+        self.generations = max(0, generations)
+        self.random = random.Random(seed)
+        self.patients_by_id = {patient["id"]: patient for patient in patients}
+        self.caregivers_by_id = {caregiver["id"]: caregiver for caregiver in caregivers}
 
-    # Vérifie si un soignant peut prendre le patient
-    def is_compatible(self, patient, caregiver):
-
+    def is_compatible(self, patient: dict, caregiver: dict) -> bool:
         return caregiver_can_visit(caregiver, patient.get("care_type", ""))
 
-    # Crée une solution aléatoire
-    def create_solution(self):
+    @staticmethod
+    def _service_hours(patient: dict) -> float:
+        return float(patient.get("service_hours", patient.get("service_duration", 1)) or 1)
 
-        solution = []
-
-        for patient in self.patients:
-
+    def create_solution(self) -> list[dict]:
+        """Construit une affectation faisable (qualification et capacité respectées)."""
+        solution: list[dict] = []
+        added_hours = {caregiver["id"]: 0.0 for caregiver in self.caregivers}
+        patients = sorted(self.patients, key=lambda patient: {"Critical": 0, "High": 1, "Medium": 2}.get(patient.get("priority"), 3))
+        for patient in patients:
+            hours = self._service_hours(patient)
             candidates = [
-                caregiver
-                for caregiver in self.caregivers
+                caregiver for caregiver in self.caregivers
                 if self.is_compatible(patient, caregiver)
+                and float(caregiver.get("current_workload", 0) or 0) + added_hours[caregiver["id"]] + hours <= float(caregiver.get("max_work_hours", 0) or 0)
             ]
-
-            if candidates:
-
-                caregiver = random.choice(candidates)
-
-                solution.append({
-                    "patient_id": patient["id"],
-                    "caregiver_id": caregiver["id"]
-                })
-
+            if not candidates:
+                continue
+            caregiver = self.random.choice(candidates)
+            added_hours[caregiver["id"]] += hours
+            solution.append({"patient_id": patient["id"], "caregiver_id": caregiver["id"], "service_hours": hours, "travel_time": float(patient.get("travel_time", 0) or 0)})
         return solution
 
-    # Évalue une solution
-    def evaluate(self, solution):
-
-        total_delay = 0
-        workload_difference = 0
-        satisfaction = 0
-
-        workloads = []
-
+    def _summary(self, solution: list[dict]) -> dict[str, float | int]:
+        assigned_ids = {assignment["patient_id"] for assignment in solution}
+        used_caregivers = {assignment["caregiver_id"] for assignment in solution}
+        costs = {key: 0.0 for key in ("service_cost", "waiting_cost", "overtime_cost", "travel_cost", "fixed_cost", "delay_penalty")}
+        satisfaction = 0.0
+        added_hours = {caregiver["id"]: 0.0 for caregiver in self.caregivers}
         for assignment in solution:
+            patient = self.patients_by_id[assignment["patient_id"]]
+            caregiver = self.caregivers_by_id[assignment["caregiver_id"]]
+            hours, travel = float(assignment["service_hours"]), float(assignment["travel_time"])
+            costs["service_cost"] += hours * float(patient.get("service_cost_rate", 50) or 0)
+            costs["waiting_cost"] += max(0, float(caregiver.get("delay", 0) or 0) + travel) * float(patient.get("waiting_cost_rate", 0) or 0)
+            costs["travel_cost"] += travel * float(patient.get("travel_cost_rate", 0.5) or 0)
+            costs["delay_penalty"] += float(caregiver.get("delay", 0) or 0) * float(patient.get("delay_penalty_rate", 2) or 0)
+            added_hours[caregiver["id"]] += hours
+            satisfaction += 70 + (20 if patient.get("preferred_caregiver") == caregiver["id"] else 0) + (10 if caregiver.get("skill") == patient.get("care_type") else 0)
+        workloads = []
+        for caregiver in self.caregivers:
+            workload = float(caregiver.get("current_workload", 0) or 0) + added_hours[caregiver["id"]]
+            workloads.append(workload)
+            costs["overtime_cost"] += max(0, workload - float(caregiver.get("max_work_hours", 0) or 0)) * float(caregiver.get("overtime_cost_rate", 30) or 0)
+        costs["fixed_cost"] = sum(float(self.caregivers_by_id[caregiver_id].get("fixed_cost", 10) or 0) for caregiver_id in used_caregivers)
+        average = sum(workloads) / len(workloads) if workloads else 0
+        variance = sum((workload - average) ** 2 for workload in workloads) / len(workloads) if workloads else 0
+        served_count = len(assigned_ids)
+        summary: dict[str, float | int] = {
+            "served_patients": served_count,
+            "unassigned_patients": len(self.patients) - served_count,
+            "satisfaction_percent": round(satisfaction / len(self.patients), 2) if self.patients else 0,
+            "workload_variance": round(variance, 4),
+            **{name: round(value, 2) for name, value in costs.items()},
+        }
+        summary["total_cost"] = round(sum(costs.values()), 2)
+        return summary
 
-            caregiver = next(
-                (
-                    c for c in self.caregivers
-                    if c["id"] == assignment["caregiver_id"]
-                ),
-                None
+    def evaluate(self, solution: list[dict]) -> tuple[list[float], dict[str, Any]]:
+        summary = self._summary(solution)
+        # La couverture est prioritaire : chaque patient non servi reçoit une pénalité forte.
+        service_penalty = summary["unassigned_patients"] * 1000 - summary["satisfaction_percent"]
+        return [summary["total_cost"], service_penalty, summary["workload_variance"]], summary
+
+    @staticmethod
+    def dominates(a: list[float], b: list[float]) -> bool:
+        return all(x <= y for x, y in zip(a, b)) and any(x < y for x, y in zip(a, b))
+
+    def pareto_front(self, population: list[dict]) -> list[dict]:
+        front = [
+            candidate for candidate in population
+            if not any(
+                other is not candidate
+                and self.dominates(other["objectives"], candidate["objectives"])
+                for other in population
             )
-
-            patient = next(
-                (
-                    p for p in self.patients
-                    if p["id"] == assignment["patient_id"]
-                ),
-                None
-            )
-
-            if caregiver is None or patient is None:
-                continue
-
-            total_delay += caregiver.get("delay", 0)
-
-            workloads.append(
-                caregiver.get("current_workload", 0)
-            )
-
-            if (
-                patient.get("preferred_caregiver")
-                == caregiver.get("id")
-            ):
-                satisfaction += 1
-
-        if workloads:
-            workload_difference = (
-                max(workloads) - min(workloads)
-            )
-
-        satisfaction_score = (
-            satisfaction / len(self.patients)
-            if self.patients
-            else 0
-        )
-
-        # NSGA-II minimise tous les objectifs
-        return [
-            total_delay,
-            workload_difference,
-            -satisfaction_score
         ]
+        # Plusieurs tirages peuvent produire exactement la même affectation.
+        unique_front = []
+        signatures = set()
+        for candidate in front:
+            signature = tuple(sorted(
+                (assignment["patient_id"], assignment["caregiver_id"])
+                for assignment in candidate["solution"]
+            ))
+            if signature not in signatures:
+                signatures.add(signature)
+                unique_front.append(candidate)
+        return unique_front
 
-    # Vérifie si A domine B
-    def dominates(self, a, b):
-
-        return (
-            all(x <= y for x, y in zip(a, b))
-            and
-            any(x < y for x, y in zip(a, b))
-        )
-
-    # Construit le front de Pareto
-    def pareto_front(self, population):
-
-        front = []
-
-        for candidate in population:
-
-            dominated = False
-
-            for other in population:
-
-                if candidate == other:
-                    continue
-
-                if self.dominates(
-                    other["objectives"],
-                    candidate["objectives"]
-                ):
-                    dominated = True
-                    break
-
-            if not dominated:
-                front.append(candidate)
-
-        return front
-
-    # Exécute NSGA-II
-    def optimize(self):
-
+    def optimize(self) -> list[dict]:
         population = []
-
-        # Population initiale
         for _ in range(self.population_size):
-
             solution = self.create_solution()
-
-            objectives = self.evaluate(solution)
-
-            population.append({
-                "solution": solution,
-                "objectives": objectives
-            })
-
-        # Générations
+            objectives, summary = self.evaluate(solution)
+            population.append({"solution": solution, "objectives": objectives, "summary": summary})
         for _ in range(self.generations):
-
-            new_population = []
-
+            offspring = []
             for _ in range(self.population_size):
-
                 solution = self.create_solution()
+                objectives, summary = self.evaluate(solution)
+                offspring.append({"solution": solution, "objectives": objectives, "summary": summary})
+            population = self.pareto_front(population + offspring)
+            population.sort(key=lambda candidate: tuple(candidate["objectives"]))
+            population = population[:self.population_size]
+        return self.pareto_front(population)
 
-                objectives = self.evaluate(solution)
+    @staticmethod
+    def select_compromise(pareto_solutions: list[dict]) -> dict | None:
+        """Sélection explicable du front : couverture, coût, satisfaction, charge."""
+        if not pareto_solutions:
+            return None
+        return min(pareto_solutions, key=lambda candidate: (candidate["summary"]["unassigned_patients"], candidate["summary"]["total_cost"], -candidate["summary"]["satisfaction_percent"], candidate["summary"]["workload_variance"]))
 
-                new_population.append({
-                    "solution": solution,
-                    "objectives": objectives
-                })
-
-            population.extend(new_population)
-
-            population = self.pareto_front(
-                population
-            )
-
-            population = population[
-                :self.population_size
-            ]
-
-        return population
-
-    def complexity_analysis(self):
-        patients_count = len(self.patients)
-        caregivers_count = len(self.caregivers)
-        population_size = self.population_size
-        generations = self.generations
-
+    def complexity_analysis(self) -> dict[str, Any]:
         return {
-            "patients": patients_count,
-            "caregivers": caregivers_count,
-            "population_size": population_size,
-            "generations": generations,
-            "evaluation_complexity": "O(N × C)",
-            "pareto_front_complexity": "O(P²)",
-            "total_complexity": "O(G × P × (N × C + P²))",
-            "evaluation_operations": generations * population_size
-            * patients_count * caregivers_count,
+            "patients": len(self.patients), "caregivers": len(self.caregivers),
+            "population_size": self.population_size, "generations": self.generations,
+            "solution_evaluation_complexity": "O(P + C)",
+            "pareto_front_complexity": "O(N²)",
+            "total_complexity": "O(G × N² × (P + C))",
+            "evaluations": self.population_size * (self.generations + 1),
         }

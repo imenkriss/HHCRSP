@@ -437,11 +437,14 @@ if st.button("Exécuter le système") or st.session_state.analysis_results:
         optimization_data = []
 
         for index, candidate in enumerate(optimization, start=1):
+            summary = candidate.get("summary", {})
             optimization_data.append({
                 "Solution": index,
-                "Retard total": candidate["objectives"][0],
-                "Différence de charge": candidate["objectives"][1],
-                "Satisfaction": -candidate["objectives"][2],
+                "Coût total": summary.get("total_cost"),
+                "Patients servis": summary.get("served_patients"),
+                "Patients non affectés": summary.get("unassigned_patients"),
+                "Variance de charge": summary.get("workload_variance"),
+                "Satisfaction": summary.get("satisfaction_percent"),
                 "Affectations": candidate["solution"],
             })
 
@@ -449,5 +452,10 @@ if st.button("Exécuter le système") or st.session_state.analysis_results:
             pd.DataFrame(optimization_data),
             use_container_width=True
         )
+
+        selected_optimization = results.get("selected_optimization")
+        if selected_optimization:
+            st.subheader("Compromis retenu par le moteur de décision")
+            st.json(selected_optimization.get("summary", {}))
     else:
         st.info("Aucune solution d'optimisation disponible.")

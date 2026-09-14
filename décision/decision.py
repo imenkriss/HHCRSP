@@ -5,6 +5,25 @@ class DecisionEngine:
     def __init__(self):
         pass
 
+    def choose_pareto_solution(self, pareto_solutions: list[dict]) -> dict | None:
+        """Sélectionne une solution du front après l'optimisation.
+
+        La règle est volontairement explicite : couvrir les patients avant de
+        réduire les coûts, puis maximiser la satisfaction et équilibrer la charge.
+        """
+        if not pareto_solutions:
+            return None
+
+        return min(
+            pareto_solutions,
+            key=lambda candidate: (
+                candidate["summary"]["unassigned_patients"],
+                candidate["summary"]["total_cost"],
+                -candidate["summary"]["satisfaction_percent"],
+                candidate["summary"]["workload_variance"],
+            ),
+        )
+
     def choose_best_caregiver(
         self,
         patient_info: dict,
