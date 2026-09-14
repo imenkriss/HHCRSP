@@ -59,6 +59,17 @@ class AgentRulesTests(unittest.TestCase):
         self.assertFalse(optimizer.is_compatible(self.patient, self.incompatible_caregiver))
         self.assertFalse(optimizer.is_compatible(self.patient, delayed))
 
+    def test_nsga_ii_separates_coverage_satisfaction_and_workload_objectives(self):
+        skilled = dict(self.compatible_caregiver, skill_level=5)
+        optimizer = NSGA2([self.patient], [skilled])
+
+        objectives, summary = optimizer.evaluate(optimizer.create_solution())
+
+        self.assertEqual(4, len(objectives))
+        self.assertEqual(1, summary["served_patients"])
+        self.assertEqual(60.0, summary["satisfaction_percent"])
+        self.assertEqual(5.0, summary["average_assigned_skill_level"])
+
 
 if __name__ == "__main__":
     unittest.main()

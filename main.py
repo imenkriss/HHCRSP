@@ -18,7 +18,7 @@ DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 
 DEFAULT_QUERY = "Analyze patient P3 and find a compatible caregiver."
 
-INT_FIELDS = ("max_work_hours", "current_workload", "delay")
+INT_FIELDS = ("max_work_hours", "current_workload", "delay", "skill_level")
 BOOL_FIELDS = ("available",)
 
 
@@ -99,6 +99,7 @@ def save_caregiver(caregiver: dict) -> bool:
             "skill": caregiver["skill"],
             "max_work_hours": caregiver.get("max_work_hours", 8),
             "current_workload": caregiver.get("current_workload", 0),
+            "skill_level": caregiver.get("skill_level", 1),
             "available": caregiver.get("available", True),
             "delay": caregiver.get("delay", 0),
         },

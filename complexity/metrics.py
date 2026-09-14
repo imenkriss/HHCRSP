@@ -92,11 +92,10 @@ class ComplexityMetrics:
                 scores.append(0)
                 continue
             caregiver = caregivers_by_id.get(assignment.get("caregiver_id"), {})
-            score = 70.0
+            score = 0.0
             if caregiver.get("id") == patient.get("preferred_caregiver"):
-                score += 20
-            if caregiver.get("skill") == patient.get("care_type"):
-                score += 10
+                score += 40
+            score += min(5.0, max(0.0, float(caregiver.get("skill_level", 1) or 0))) * 12
             scores.append(score)
         served_scores = [score for score in scores if score]
         self.metrics["patient_satisfaction"] = {

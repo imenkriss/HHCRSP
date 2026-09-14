@@ -8,8 +8,8 @@ class DecisionEngine:
     def choose_pareto_solution(self, pareto_solutions: list[dict]) -> dict | None:
         """Sélectionne une solution du front après l'optimisation.
 
-        La règle est volontairement explicite : couvrir les patients avant de
-        réduire les coûts, puis maximiser la satisfaction et équilibrer la charge.
+        La règle est volontairement explicite : couvrir les patients, puis
+        maximiser leur satisfaction, réduire les coûts et équilibrer la charge.
         """
         if not pareto_solutions:
             return None
@@ -18,8 +18,8 @@ class DecisionEngine:
             pareto_solutions,
             key=lambda candidate: (
                 candidate["summary"]["unassigned_patients"],
-                candidate["summary"]["total_cost"],
                 -candidate["summary"]["satisfaction_percent"],
+                candidate["summary"]["total_cost"],
                 candidate["summary"]["workload_variance"],
             ),
         )

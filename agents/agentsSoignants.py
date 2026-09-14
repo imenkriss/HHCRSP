@@ -8,6 +8,7 @@ class CaregiverAgent:
             "skill": self.caregiver_data.get("skill", ""),
             "max_work_hours": self.caregiver_data.get("max_work_hours", 0),
             "current_workload": self.caregiver_data.get("current_workload", 0),
+            "skill_level": self.caregiver_data.get("skill_level", 1),
             "available": self.caregiver_data.get("available", False),
             "delay": self.caregiver_data.get("delay", 0)
         }

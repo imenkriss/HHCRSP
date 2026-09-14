@@ -7,5 +7,6 @@ class PatientAgent:
             "id": self.patient_data["id"],
             "care_type": self.patient_data["care_type"],
             "priority": self.patient_data["priority"],
-            "preferred_caregiver": self.patient_data.get("preferred_caregiver", "")
+            "preferred_caregiver": self.patient_data.get("preferred_caregiver", ""),
+            "required_skill_level": self.patient_data.get("required_skill_level", 1),
         }

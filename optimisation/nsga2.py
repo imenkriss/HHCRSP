@@ -9,7 +9,7 @@ from agents.compatibilite import caregiver_can_visit
 
 
 class NSGA2:
-    """Optimise coût, couverture/satisfaction et variance de charge.
+    """Optimise les coûts, la prise en charge, la satisfaction et la charge.
 
     Les champs de coût, de trajet et de durée sont optionnels : les CSV actuels
     restent donc valides, tout en permettant d'enrichir progressivement le modèle.
@@ -30,6 +30,18 @@ class NSGA2:
     @staticmethod
     def _service_hours(patient: dict) -> float:
         return float(patient.get("service_hours", patient.get("service_duration", 1)) or 1)
+
+    @staticmethod
+    def _skill_level(caregiver: dict) -> float:
+        """Retourne le niveau de compétence, avec 1 comme valeur historique."""
+        return max(0.0, float(caregiver.get("skill_level", 1) or 0))
+
+    @classmethod
+    def _patient_satisfaction(cls, patient: dict, caregiver: dict) -> float:
+        """Calcule la satisfaction (préférence 40 %, compétence 60 %)."""
+        preference_score = 40.0 if patient.get("preferred_caregiver") == caregiver["id"] else 0.0
+        skill_score = min(cls._skill_level(caregiver), 5.0) * 12.0
+        return preference_score + skill_score
 
     def create_solution(self) -> list[dict]:
         """Construit une affectation faisable (qualification et capacité respectées)."""
@@ -65,7 +77,7 @@ class NSGA2:
             costs["travel_cost"] += travel * float(patient.get("travel_cost_rate", 0.5) or 0)
             costs["delay_penalty"] += float(caregiver.get("delay", 0) or 0) * float(patient.get("delay_penalty_rate", 2) or 0)
             added_hours[caregiver["id"]] += hours
-            satisfaction += 70 + (20 if patient.get("preferred_caregiver") == caregiver["id"] else 0) + (10 if caregiver.get("skill") == patient.get("care_type") else 0)
+            satisfaction += self._patient_satisfaction(patient, caregiver)
         workloads = []
         for caregiver in self.caregivers:
             workload = float(caregiver.get("current_workload", 0) or 0) + added_hours[caregiver["id"]]
@@ -78,7 +90,13 @@ class NSGA2:
         summary: dict[str, float | int] = {
             "served_patients": served_count,
             "unassigned_patients": len(self.patients) - served_count,
-            "satisfaction_percent": round(satisfaction / len(self.patients), 2) if self.patients else 0,
+            # La couverture étant son propre objectif, on mesure ici la qualité
+            # des affectations réellement réalisées.
+            "satisfaction_percent": round(satisfaction / served_count, 2) if served_count else 0,
+            "average_assigned_skill_level": round(
+                sum(self._skill_level(self.caregivers_by_id[item["caregiver_id"]]) for item in solution) / served_count,
+                2,
+            ) if served_count else 0,
             "workload_variance": round(variance, 4),
             **{name: round(value, 2) for name, value in costs.items()},
         }
@@ -87,9 +105,14 @@ class NSGA2:
 
     def evaluate(self, solution: list[dict]) -> tuple[list[float], dict[str, Any]]:
         summary = self._summary(solution)
-        # La couverture est prioritaire : chaque patient non servi reçoit une pénalité forte.
-        service_penalty = summary["unassigned_patients"] * 1000 - summary["satisfaction_percent"]
-        return [summary["total_cost"], service_penalty, summary["workload_variance"]], summary
+        # NSGA-II minimise chaque objectif; ils restent séparés afin qu'aucune
+        # pénalité arbitraire ne masque la couverture ou la satisfaction.
+        return [
+            summary["total_cost"],
+            float(summary["unassigned_patients"]),
+            -float(summary["satisfaction_percent"]),
+            float(summary["workload_variance"]),
+        ], summary
 
     @staticmethod
     def dominates(a: list[float], b: list[float]) -> bool:
@@ -136,10 +159,10 @@ class NSGA2:
 
     @staticmethod
     def select_compromise(pareto_solutions: list[dict]) -> dict | None:
-        """Sélection explicable du front : couverture, coût, satisfaction, charge."""
+        """Sélection : couverture, satisfaction, coût, puis charge."""
         if not pareto_solutions:
             return None
-        return min(pareto_solutions, key=lambda candidate: (candidate["summary"]["unassigned_patients"], candidate["summary"]["total_cost"], -candidate["summary"]["satisfaction_percent"], candidate["summary"]["workload_variance"]))
+        return min(pareto_solutions, key=lambda candidate: (candidate["summary"]["unassigned_patients"], -candidate["summary"]["satisfaction_percent"], candidate["summary"]["total_cost"], candidate["summary"]["workload_variance"]))
 
     def complexity_analysis(self) -> dict[str, Any]:
         return {
