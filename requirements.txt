@@ -7,3 +7,5 @@ langchain-ollama
 pydantic
 ollama
 scikit-learn
+nsga2
+pymoo
