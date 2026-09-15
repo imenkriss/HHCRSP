@@ -1,4 +1,6 @@
 from connaissance.base_connaissance import KnowledgeBase
+import re
+import unicodedata
 
 
 class Retriever:
@@ -9,12 +11,21 @@ class Retriever:
         """
         self.knowledge_base = KnowledgeBase()
 
-    def retrieve(self, query):
+    @staticmethod
+    def _normalize(value: str) -> str:
+        normalized = unicodedata.normalize("NFKD", value or "")
+        without_accents = "".join(
+            character for character in normalized
+            if not unicodedata.combining(character)
+        )
+        return re.sub(r"\s+", " ", without_accents.casefold()).strip()
+
+    def retrieve(self, query: str, top_k: int | None = None) -> list[dict]:
         """
         Recherche les documents les plus pertinents.
         """
 
-        query = query.lower()
+        normalized_query = self._normalize(query)
 
         documents = self.knowledge_base.get_all_documents()
 
@@ -30,7 +41,8 @@ class Retriever:
 
             for keyword in document["keywords"]:
 
-                if keyword.lower() in query:
+                normalized_keyword = self._normalize(keyword)
+                if normalized_keyword and normalized_keyword in normalized_query:
 
                     score += 1
 
@@ -45,12 +57,9 @@ class Retriever:
                 })
 
         # Trier du meilleur score au plus faible
-        results.sort(
+        results.sort(key=lambda result: (-result["score"], result["document"]["id"]))
 
-            key=lambda x: x["score"],
-
-            reverse=True
-
-        )
+        if top_k is not None:
+            return results[:max(0, top_k)]
 
         return results

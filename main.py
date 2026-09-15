@@ -221,6 +221,10 @@ def run_hhcop_pipeline(
     metrics.unassigned_patients(patients, assignments)
     metrics.patient_satisfaction(patients, soignants, assignments)
     metrics.optimization_indicators(selected_optimization)
+    metrics.uncertainty_indicators(
+        llm_output,
+        retrieved_docs,
+    )
 
     metrics.record(
         "Total Pipeline",

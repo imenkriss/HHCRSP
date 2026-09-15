@@ -108,5 +108,23 @@ class ComplexityMetrics:
             "status": "ok", **solution.get("summary", {})
         }
 
+    def uncertainty_indicators(self, llm_output: dict, rag_context: list[str]) -> None:
+        """Expose les signaux d'incertitude observables sans inventer une probabilité."""
+        missing_fields = sum(
+            llm_output.get(field) is None or llm_output.get(field) == ""
+            for field in ("patient_id", "urgency", "delayed")
+        )
+        signal_count = 3
+        evidence_score = min(1.0, len(rag_context) / 3)
+        completeness_score = 1 - (missing_fields / signal_count)
+        confidence_score = round((evidence_score + completeness_score) / 2, 2)
+        self.metrics["uncertainty"] = {
+            "confidence_score": confidence_score,
+            "uncertainty_score": round(1 - confidence_score, 2),
+            "rag_documents": len(rag_context),
+            "missing_signals": missing_fields,
+            "status": "low_evidence" if not rag_context else "evidence_available",
+        }
+
     def get_metrics(self) -> dict[str, dict[str, Any]]:
         return self.metrics.copy()

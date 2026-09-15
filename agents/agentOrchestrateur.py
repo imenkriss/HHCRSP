@@ -27,20 +27,12 @@ class Orchestrator:
         return caregiver_is_eligible(caregiver)
 
     def get_candidate_caregivers(self, care_type: str) -> list[dict]:
-        candidates = []
-
-        # C004 : seuls les soignants qualifiés pour ce type de soin
-        for caregiver in self.caregivers:
-            if caregiver_can_visit(caregiver, care_type):
-                candidates.append(CaregiverAgent(caregiver).get_information())
-
-        # repli : les soignants polyvalents ("General")
-        if not candidates:
-            for caregiver in self.caregivers:
-                if caregiver_can_visit(caregiver, care_type):
-                    candidates.append(CaregiverAgent(caregiver).get_information())
-
-        return candidates
+        """Retourne une seule fois chaque soignant compatible et disponible."""
+        return [
+            CaregiverAgent(caregiver).get_information()
+            for caregiver in self.caregivers
+            if caregiver_can_visit(caregiver, care_type)
+        ]
 
     def process(self, llm_output: dict) -> dict:
         patient_info = None
@@ -48,14 +40,16 @@ class Orchestrator:
         candidate_caregivers = []
 
         # récupérer patient
-        if llm_output.get("patient_id"):
-            patient_agent = self.find_patient(llm_output["patient_id"])
+        patient_id = llm_output.get("patient_id")
+        if patient_id:
+            patient_agent = self.find_patient(patient_id)
             if patient_agent:
                 patient_info = patient_agent.get_information()
 
         # récupérer soignant mentionné dans la requête
-        if llm_output.get("caregiver_id"):
-            caregiver_agent = self.find_caregiver(llm_output["caregiver_id"])
+        caregiver_id = llm_output.get("caregiver_id")
+        if caregiver_id:
+            caregiver_agent = self.find_caregiver(caregiver_id)
             if caregiver_agent:
                 caregiver_info = caregiver_agent.get_information()
 
