@@ -10,6 +10,7 @@ from llm.raisonner import LLMRaisonner
 from agents.agentOrchestrateur import Orchestrator
 from complexity.metrics import ComplexityMetrics
 from optimisation.nsga2 import NSGA2
+from data.dataset_loader import load_combined_dataset
 # le paquet "décision" contient un caractère accentué : import dynamique
 DecisionEngine = importlib.import_module("décision.decision").DecisionEngine
 
@@ -59,21 +60,30 @@ def load_csv(filename: str) -> list[dict]:
 
 
 def load_dataset() -> tuple[list[dict], list[dict]]:
-    #Charge les patients et les soignants.
-
-    return load_csv("patients.csv"), load_csv("soignants.csv")
+    """Load benchmark-backed patients, clinical profiles, and caregivers."""
+    patients, soignants = load_combined_dataset()
+    for filename, records in (
+        ("admin_patients.csv", patients),
+        ("admin_caregivers.csv", soignants),
+    ):
+        path = os.path.join(DATA_DIR, filename)
+        if os.path.exists(path):
+            records.extend(load_csv(filename))
+    return patients, soignants
 
 
 def append_csv_record(filename: str, record: dict) -> bool:
     """Ajoute un enregistrement au CSV si son identifiant n'existe pas."""
     path = os.path.join(DATA_DIR, filename)
-    rows = load_csv(filename)
+    rows = load_csv(filename) if os.path.exists(path) else []
 
     if any(row.get("id") == record.get("id") for row in rows):
         return False
 
     with open(path, "a", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=record.keys())
+        if not os.path.exists(path) or os.path.getsize(path) == 0:
+            writer.writeheader()
         writer.writerow(record)
 
     return True
@@ -81,7 +91,7 @@ def append_csv_record(filename: str, record: dict) -> bool:
 
 def save_patient(patient: dict) -> bool:
     return append_csv_record(
-        "patients.csv",
+        "admin_patients.csv",
         {
             "id": patient["id"],
             "care_type": patient["care_type"],
@@ -93,7 +103,7 @@ def save_patient(patient: dict) -> bool:
 
 def save_caregiver(caregiver: dict) -> bool:
     return append_csv_record(
-        "soignants.csv",
+        "admin_caregivers.csv",
         {
             "id": caregiver["id"],
             "skill": caregiver["skill"],

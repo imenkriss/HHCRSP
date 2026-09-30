@@ -1,6 +1,6 @@
 from agents.agentsPatients import PatientAgent
 from agents.agentsSoignants import CaregiverAgent
-from agents.compatibilite import caregiver_can_visit, caregiver_is_eligible
+from agents.compatibilite import caregiver_can_visit
 
 
 class Orchestrator:
@@ -20,21 +20,26 @@ class Orchestrator:
         caregiver = self.caregivers_by_id.get(caregiver_id)
         return CaregiverAgent(caregiver) if caregiver else None
 
-    def _is_eligible(self, caregiver: dict) -> bool:
-        """
-        Un soignant est éligible s'il est disponible.
-        """
-        return caregiver_is_eligible(caregiver)
-
-    def get_candidate_caregivers(self, care_type: str) -> list[dict]:
-        """Retourne une seule fois chaque soignant compatible et disponible."""
+    def get_candidate_caregivers(
+        self,
+        care_type: str,
+        required_skill_level: int = 1,
+        exclude_caregiver_id: str | None = None,
+    ) -> list[dict]:
+        """Retourne une seule fois chaque soignant compatible, disponible et
+        possédant le niveau de compétence requis, en excluant éventuellement
+        le soignant déjà assigné."""
         return [
             CaregiverAgent(caregiver).get_information()
             for caregiver in self.caregivers
-            if caregiver_can_visit(caregiver, care_type)
+            if caregiver["id"] != exclude_caregiver_id
+            and caregiver_can_visit(caregiver, care_type, required_skill_level)
         ]
 
     def process(self, llm_output: dict) -> dict:
+        if not isinstance(llm_output, dict):
+            raise ValueError("llm_output doit être un dictionnaire")
+
         patient_info = None
         caregiver_info = None
         candidate_caregivers = []
@@ -55,11 +60,15 @@ class Orchestrator:
 
         # si on a un patient, chercher des candidats pour réaffectation
         if patient_info:
-            candidate_caregivers = self.get_candidate_caregivers(patient_info["care_type"])
+            candidate_caregivers = self.get_candidate_caregivers(
+                patient_info["care_type"],
+                required_skill_level=patient_info["required_skill_level"],
+                exclude_caregiver_id=caregiver_id,
+            )
 
         return {
             "patient_info": patient_info,
             "caregiver_info": caregiver_info,
             "candidate_caregivers": candidate_caregivers,
-            "llm_output": llm_output
+            "llm_output": llm_output,
         }
