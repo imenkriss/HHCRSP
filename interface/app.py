@@ -142,8 +142,11 @@ if st.button("Exécuter le système") or st.session_state.analysis_results:
                 use_container_width=True
             )
 
+            chart_data = df_complexity.rename(
+                columns={"Temps d'exécution (s)": "Temps_s"}
+            )
             st.bar_chart(
-                df_complexity.set_index("Composant")
+                chart_data.set_index("Composant")
             )
         else:
             st.info("Aucun temps d'exécution n'a été enregistré.")

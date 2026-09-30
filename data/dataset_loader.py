@@ -159,6 +159,9 @@ def load_combined_dataset() -> tuple[list[dict], list[dict]]:
             "demand": location["demand"],
             "ready_time": location["ready_time"],
             "due_date": location["due_date"],
+            "time_windows": clinical.get("time_windows") or [
+                (location["ready_time"], location["due_date"])
+            ],
             "service_duration": location["service_duration"],
             "service_hours": max(0.25, location["service_duration"] / 60),
             "travel_time": math.dist((location["x"], location["y"]), (depot["x"], depot["y"])),
