@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Literal, Optional
 
 from ollama import chat
 from pydantic import BaseModel
@@ -19,12 +19,24 @@ USER_PROMPT = """
 HHCOP scenario:
 {query}
 
+Classify the request as exactly one of: patient_info, patient_urgent,
+caregiver_info, vehicle_info, assignment, or unknown. Extract patient_id and
+caregiver_id only when explicitly present in the scenario. Never invent IDs.
+
 Knowledge retrieved by RAG:
 {context}
 """
 
 
 class ReasoningResult(BaseModel):
+    request_type: Literal[
+        "patient_info",
+        "patient_urgent",
+        "caregiver_info",
+        "vehicle_info",
+        "assignment",
+        "unknown",
+    ]
     patient_id: Optional[str]
     caregiver_id: Optional[str]
     urgency: bool

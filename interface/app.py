@@ -21,26 +21,31 @@ st.set_page_config(page_title="HHCOP RAG Multi-Agent System", layout="wide")
 st.title("Home Healthcare Multi-AGENT Systems")
 
 
-# Scénario principal et modèle utilisés par le pipeline.
-query = st.text_input("Entrez un scénario HHCOP :", DEFAULT_QUERY)
-model = st.text_input("Modèle Ollama :", "qwen3:4b")
+with st.form("pipeline_form"):
+    query = st.text_input(
+        "Entrez un scénario HHCOP :",
+        DEFAULT_QUERY,
+        help=(
+            "Pour consulter un patient, indiquez son identifiant réel, par exemple "
+            "D00001. Les fenêtres multiples doivent être enregistrées dans les "
+            "données du patient; les écrire ici ne les ajoute pas encore au planning."
+        ),
+    )
+    model = st.text_input("Modèle Ollama :", "qwen3:4b")
+    run_requested = st.form_submit_button("Exécuter le système")
 
 if "analysis_results" not in st.session_state:
-    st.session_state.analysis_results = []
+    st.session_state.analysis_results = None
 
-if st.button("Exécuter le système") or st.session_state.analysis_results:
-
+if run_requested:
     try:
         with st.spinner(f"Analyse en cours avec Ollama ({model})..."):
-            if st.session_state.analysis_results:
-                results = st.session_state.analysis_results
-            else:
-                results = run_hhcop_pipeline(
-                    query,
-                    model=model,
-                )
-                st.session_state.analysis_results = results
+            results = run_hhcop_pipeline(query, model=model)
+            st.session_state.analysis_results = results
+            st.session_state.analysis_query = query
+            st.session_state.analysis_model = model
     except Exception as error:
+        st.session_state.analysis_results = None
         st.error(
             "Impossible d'exécuter le pipeline. Vérifiez qu'Ollama est ouvert "
             f"et que le modèle '{model}' est installé."
@@ -48,17 +53,28 @@ if st.button("Exécuter le système") or st.session_state.analysis_results:
         st.exception(error)
         st.stop()
 
+results = st.session_state.analysis_results
+has_current_results = (
+    results is not None
+    and st.session_state.get("analysis_query") == query
+    and st.session_state.get("analysis_model") == model
+)
+
+if results is not None and not has_current_results:
+    st.info("La requête ou le modèle a changé. Exécutez le système pour actualiser les résultats.")
+
+if has_current_results:
     # 1. Dataset
     st.header("1. Dataset HHCOP")
 
     col1, col2 = st.columns(2)
 
     with col1:
-        st.subheader("Patients")
+        st.subheader("Patients-data")
         st.dataframe(pd.DataFrame(results["patients"]))
 
     with col2:
-        st.subheader("Soignants")
+        st.subheader("Caregivers-coordination")
         st.dataframe(pd.DataFrame(results["soignants"]))
 
     # 2. RAG

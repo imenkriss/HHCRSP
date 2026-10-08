@@ -40,6 +40,56 @@ class AgentRulesTests(unittest.TestCase):
 
         self.assertEqual(["S2"], [candidate["id"] for candidate in candidates])
 
+    def test_orchestrator_routes_patient_health_request_to_patient_agent(self):
+        patient = dict(
+            self.patient,
+            Age=72,
+            Chronic_Health_Conditions="Heart Disease",
+            x=12.5,
+            y=8.0,
+        )
+        result = Orchestrator([patient], []).process({
+            "request_type": "patient_info",
+            "patient_id": "P1",
+            "urgency": False,
+        })
+
+        self.assertEqual("patient", result["routed_to"])
+        self.assertEqual(72, result["agent_response"]["medical_information"]["Age"])
+        self.assertEqual({"x": 12.5, "y": 8.0}, result["agent_response"]["coordinates"])
+
+    def test_orchestrator_routes_emergency_request_and_flags_critical_patient(self):
+        patient = dict(self.patient, priority="Critical")
+        result = Orchestrator([patient], []).process({
+            "request_type": "patient_urgent",
+            "patient_id": "P1",
+            "urgency": False,
+        })
+
+        self.assertEqual("patient", result["routed_to"])
+        self.assertTrue(result["agent_response"]["is_urgent"])
+
+    def test_orchestrator_routes_vehicle_request_to_caregiver_agent(self):
+        caregiver = dict(self.compatible_caregiver, x=5.0, y=7.0, vehicle_capacity=20)
+        result = Orchestrator([], [caregiver]).process({
+            "request_type": "vehicle_info",
+            "caregiver_id": "S2",
+        })
+
+        self.assertEqual("caregiver", result["routed_to"])
+        self.assertEqual(
+            {"x": 5.0, "y": 7.0, "capacity": 20},
+            result["agent_response"]["vehicle"],
+        )
+
+    def test_orchestrator_does_not_guess_missing_patient_id(self):
+        result = Orchestrator([self.patient], []).process({
+            "request_type": "patient_info",
+            "patient_id": None,
+        })
+
+        self.assertEqual("not_found", result["agent_response"]["status"])
+
     def test_decision_does_not_keep_incompatible_initial_caregiver(self):
         decision = DecisionEngine().choose_best_caregiver(
             self.patient,

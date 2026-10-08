@@ -12,3 +12,14 @@ class CaregiverAgent:
             "available": self.caregiver_data.get("available", False),
             "delay": self.caregiver_data.get("delay", 0)
         }
+
+    def handle_request(self, request_type: str) -> dict:
+        information = self.get_information()
+        information["request_type"] = request_type
+        if request_type == "vehicle_info":
+            information["vehicle"] = {
+                "x": self.caregiver_data.get("x"),
+                "y": self.caregiver_data.get("y"),
+                "capacity": self.caregiver_data.get("vehicle_capacity"),
+            }
+        return information
