@@ -1,0 +1,67 @@
+{
+  "rules": [
+    {
+      "id": "R001",
+      "category": "Priority",
+      "keywords": ["urgent", "priority", "emergency", "critical"],
+      "text": "High-priority or urgent patients must be scheduled before lower-priority patients.",
+      "action": "Schedule the most urgent patient first."
+    },
+    {
+      "id": "R002",
+      "category": "Caregiver Delay",
+      "keywords": ["delay", "late", "retard"],
+      "text": "A caregiver whose delay exceeds the acceptable threshold should hand the patient over to another available caregiver.",
+      "action": "Reassign the patient to another available compatible caregiver."
+    },
+    {
+      "id": "R003",
+      "category": "Cancellation",
+      "keywords": ["cancel"],
+      "text": "When a patient cancels, the appointment is removed and the caregiver route is updated.",
+      "action": "Remove the appointment from the schedule."
+    },
+    {
+      "id": "R004",
+      "category": "Vehicle Breakdown",
+      "keywords": ["breakdown", "vehicle", "failure", "accident"],
+      "text": "When a caregiver vehicle breaks down, a replacement caregiver must be assigned to guarantee continuity of care.",
+      "action": "Assign a replacement caregiver."
+    },
+    {
+      "id": "R005",
+      "category": "Conflict",
+      "keywords": ["conflict", "compete"],
+      "text": "When critical patients compete for the same caregiver, the most urgent patient is served first.",
+      "action": "Prioritise the most urgent patient."
+    },
+    {
+      "id": "R006",
+      "category": "Caregiver Exchange",
+      "keywords": ["exchange", "swap", "replace", "reassign", "substitute"],
+      "text": "Caregivers may exchange or replace a patient through the orchestrator when continuity requires it.",
+      "action": "Reassign the patient to the replacing caregiver."
+    },
+    {
+      "id": "R007",
+      "category": "Skill Compatibility",
+      "keywords": ["skill", "qualified", "specialised", "compatibility", "training"],
+      "text": "A caregiver may serve a patient only when the caregiver skill level covers the patient requirement.",
+      "action": "Filter caregivers by skill compatibility."
+    },
+    {
+      "id": "R008",
+      "category": "Time Window",
+      "keywords": ["time window", "schedule", "punctual", "deadline"],
+      "text": "Service must start inside one of the patient time windows; early arrival waits and late arrival incurs tardiness.",
+      "action": "Respect the patient time windows."
+    },
+    {
+      "id": "R009",
+      "category": "Workload",
+      "keywords": ["overtime", "workload", "hours", "charge"],
+      "text": "Working time must not exceed the rated duration plus the allowed overtime cap.",
+      "action": "Limit overtime and balance the workload."
+    }
+  ]
+}

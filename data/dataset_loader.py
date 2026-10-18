@@ -123,6 +123,24 @@ def _priority(record: dict) -> tuple[str, int]:
     return "Medium", 1
 
 
+def _patient_time_windows(clinical: dict, location: dict, index: int) -> list[tuple[float, float]]:
+    """Return one or more valid service windows; a subset of patients are flexible."""
+    supplied = clinical.get("time_windows")
+    if supplied:
+        windows = list(supplied)
+    else:
+        start, end = float(location["ready_time"]), float(location["due_date"])
+        windows = [(start, end)]
+        # Deterministic flexibility: about one third of patients get alternate slots.
+        if index % 3 == 0 and end - start >= 120:
+            midpoint = (start + end) / 2
+            windows = [(start, midpoint), (midpoint, end)]
+        elif index % 7 == 0 and end - start >= 180:
+            third = (end - start) / 3
+            windows = [(start, start + third), (start + third, start + 2 * third), (start + 2 * third, end)]
+    return windows or [(float(location["ready_time"]), float(location["due_date"]))]
+
+
 def _geographic_rows(instances: list[dict]) -> list[dict]:
     rows = []
     max_rows = max(len(instance["customers"]) for instance in instances)
@@ -159,9 +177,7 @@ def load_combined_dataset() -> tuple[list[dict], list[dict]]:
             "demand": location["demand"],
             "ready_time": location["ready_time"],
             "due_date": location["due_date"],
-            "time_windows": clinical.get("time_windows") or [
-                (location["ready_time"], location["due_date"])
-            ],
+            "time_windows": _patient_time_windows(clinical, location, index),
             "service_duration": location["service_duration"],
             "service_hours": max(0.25, location["service_duration"] / 60),
             "travel_time": math.dist((location["x"], location["y"]), (depot["x"], depot["y"])),

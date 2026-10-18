@@ -1,0 +1,7 @@
+dataset,instance,algorithm,gamma,runs,best_z1,best_z2,best_z3,mean_z1,mean_z2,mean_z3,mean_first_feasible_gen,mean_caregivers,mean_pareto_solutions,non_dominated_solutions,feasible_runs,no_feasible_solution,mean_runtime_sec
+A,A_2_1,NSGA-II,0.0,2,405.3731,38.0,0.0007,837.8244,21.5789,4.6754,0.0,1.89,19.0,38,2,False,0.0979
+A,A_2_1,MTCMOLite,0.0,2,65.4742,38.0,0.0,854.8513,19.5385,3.8209,0.0,1.62,19.5,39,2,False,0.1885
+A,A_3_1,NSGA-II,0.0,2,98.2114,39.0,0.0,739.0332,17.5862,7.2619,0.0,2.0,14.5,29,2,False,0.0978
+A,A_3_1,MTCMOLite,0.0,2,429.4459,39.0,2.9685,803.7055,25.0625,8.451,0.0,2.0,8.0,16,2,False,0.2148
+A,A_4_1,NSGA-II,0.0,2,130.9485,43.0,0.0,773.7466,19.8182,4.225,0.0,2.15,16.5,33,2,False,0.0901
+A,A_4_1,MTCMOLite,0.0,2,240.9646,43.0,0.6304,815.5337,20.5263,7.5859,0.0,2.11,9.5,19,2,False,0.1862
