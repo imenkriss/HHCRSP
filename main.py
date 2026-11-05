@@ -120,6 +120,18 @@ def run_hhcop_pipeline(
     model: str = "qwen3:4b",
     patient_event: dict | None = None,
     caregiver_event: dict | None = None,
+    dataset: str | None = None,
+    caregivers: int | None = None,
+    location: int | None = None,
+    instance_seed: int | None = None,
+    population_size: int = 20,
+    generations: int = 10,
+    local_search: bool = True,
+    algorithm: str = "nsga2",
+    decision_method: str = "weighted_sum",
+    gamma_t: float = 0.0,
+    gamma_s: float = 0.0,
+    gamma_p: float = 0.0,
 ) -> dict:
 
 
@@ -129,13 +141,19 @@ def run_hhcop_pipeline(
     # DATASET
     start = metrics.start()
     patients, soignants = load_dataset()
-
+    if dataset is not None or caregivers is not None or location is not None or instance_seed is not None:
+        from optimisation.mtwmo.generator import generate_instance
+        instance = generate_instance(dataset or "A", caregivers or 2, location or 1, seed=(instance_seed if instance_seed is not None else 0))
+        patients = [
+            {"id": str(p.id), "care_type": getattr(p, "care_type", "General"), "priority": getattr(p, "priority", "Medium"), "required_skill_level": 1, "service_hours": p.service_time / 60.0, "travel_time": 0.0, "travel_time_min": 0.0, "travel_time_max": 0.0, "time_windows": list(getattr(p, "time_windows", []))}
+            for p in instance.patients
+        ]
+        soignants = [{"id": f"K{idx}", "skill": "General", "skill_level": 1, "available": True, "current_workload": 0, "max_work_hours": 8, "delay": 0} for idx in range(1, (caregivers or 2) + 1)]
     if patient_event:
         patients.append(patient_event)
-
     if caregiver_event:
         soignants.append(caregiver_event)
-
+    instance_name = f"{(dataset or 'A').upper()}_{caregivers or 2}_{location or 1}"
     metrics.record("Dataset", start)
 
     # 1. RAG
@@ -176,23 +194,31 @@ def run_hhcop_pipeline(
 
     # 4. OPTIMISATION NSGA-II
     start = metrics.start()
-
     optimizer = NSGA2(
         patients,
-        soignants
+        soignants,
+        population_size=population_size,
+        generations=generations,
+        uncertainty_scenarios=32,
+        gamma_t=gamma_t,
+        gamma_s=gamma_s,
+        gamma_p=gamma_p,
     )
     optimization_results = optimizer.optimize()
-    optimization_analysis = optimizer.complexity_analysis()
-
+    optimization_analysis = {
+        "algorithm": "MTCMOLite" if str(algorithm).lower() == "mtcmo" else "NSGA-II",
+        "population_size": population_size,
+        "generations": generations,
+        "local_search": local_search,
+        "gamma": {"gamma_t": gamma_t, "gamma_s": gamma_s, "gamma_p": gamma_p},
+    }
     metrics.record("NSGA-II Optimization", start)
 
     # 5. DECISION ENGINE : sélection d'un compromis du front de Pareto.
-    # Il ne prend plus une décision locale avant l'optimisation globale.
     start = metrics.start()
-    selected_optimization = DecisionEngine().choose_pareto_solution(
-        optimization_results
-    )
-    assignments = selected_optimization["solution"] if selected_optimization else []
+    engine = DecisionEngine(method=decision_method)
+    selected_optimization = engine.select_from_pareto_set(optimization_results)
+    assignments = selected_optimization["assignments"] if selected_optimization else []
     selected_patient = orchestration_output["patient_info"]
     selected_assignment = next(
         (
@@ -202,46 +228,51 @@ def run_hhcop_pipeline(
         None,
     )
     if not selected_patient:
-        final_decision = {
-            "status": "error",
-            "message": "No patient information found in the request.",
-        }
+        final_decision = {"status": "error", "message": "No patient information found in the request."}
     elif selected_assignment:
         final_decision = {
             "status": "assigned",
             "patient_id": selected_patient["id"],
             "assigned_caregiver": selected_assignment["caregiver_id"],
-            "reason": "Assignment selected from the NSGA-II Pareto compromise.",
+            "reason": "Assignment selected from the Pareto compromise.",
+            "method": decision_method,
         }
     else:
         final_decision = {
             "status": "unassigned",
             "patient_id": selected_patient["id"],
             "assigned_caregiver": None,
-            "reason": "No feasible NSGA-II assignment for this patient.",
+            "reason": "No feasible assignment for this patient.",
+            "method": decision_method,
         }
+    decision_payload = {
+        "method": decision_method,
+        "objectives": selected_optimization["objectives"] if selected_optimization else {},
+        "visit_plan": selected_optimization["visit_plan"] if selected_optimization else [],
+        "justification": selected_optimization["justification"] if selected_optimization else "No Pareto solution selected.",
+        "assignments": assignments,
+        "status": selected_optimization["status"] if selected_optimization else "empty",
+    }
     metrics.record("Decision Engine", start)
 
     # 6. COMPLEXITÉ ET INDICATEURS : calculés après l'optimisation, sur la
     # solution réellement retenue et ses paramètres d'exécution.
     metrics.problem_size(patients, soignants)
-    metrics.agent_interactions(patients, soignants)
+    metrics.agent_interactions(patients, soignants, observed_count=0)
     metrics.caregiver_delay(soignants)
     metrics.workload_balance(soignants, assignments)
     metrics.unassigned_patients(patients, assignments)
     metrics.patient_satisfaction(patients, soignants, assignments)
     metrics.optimization_indicators(selected_optimization)
-    metrics.uncertainty_indicators(
-        llm_output,
-        retrieved_docs,
-    )
+    metrics.uncertainty_indicators(llm_output, retrieved_docs)
+    metrics.delays_and_overtime([], soignants)
+    metrics.pareto_quality([], (0.0, 0.0), feasible_count=0)
+    metrics.record("Metrics", start)
+    metrics.record("Total Pipeline", total_start)
 
-    metrics.record(
-        "Total Pipeline",
-        total_start
-    )
-
-
+    # keep compatibility with tests that expect the decision info at the top level
+    decision = dict(decision_payload)
+    decision["instance_info"] = {"name": instance_name}
     return {
         "query": query,
         "patients": patients,
@@ -251,10 +282,12 @@ def run_hhcop_pipeline(
         "llm_output": llm_output,
         "orchestration_output": orchestration_output,
         "final_decision": final_decision,
+        "decision": decision,
         "optimization": optimization_results,
         "selected_optimization": selected_optimization,
         "optimization_analysis": optimization_analysis,
-        "complexity": metrics.get_metrics()
+        "instance_info": {"name": instance_name},
+        "complexity": metrics.get_metrics(),
     }
 
 

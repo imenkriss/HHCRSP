@@ -6,6 +6,7 @@ import random
 from typing import Any
 
 from agents.compatibilite import caregiver_can_visit
+from optimisation.validators import assignment_to_routes
 
 
 class NSGA2:
@@ -23,6 +24,9 @@ class NSGA2:
         generations: int = 10,
         seed: int | None = 42,
         uncertainty_scenarios: int = 32,
+        gamma_t: float = 0.0,
+        gamma_s: float = 0.0,
+        gamma_p: float = 0.0,
     ) -> None:
         self.patients = patients
         self.caregivers = caregivers
@@ -30,6 +34,9 @@ class NSGA2:
         self.generations = max(0, generations)
         self.random = random.Random(seed)
         self.uncertainty_scenarios = max(1, uncertainty_scenarios)
+        self.gamma_t = float(gamma_t)
+        self.gamma_s = float(gamma_s)
+        self.gamma_p = float(gamma_p)
         self.patients_by_id = {patient["id"]: patient for patient in patients}
         self.caregivers_by_id = {caregiver["id"]: caregiver for caregiver in caregivers}
         self.scenarios = self._build_scenarios(seed)
@@ -196,9 +203,14 @@ class NSGA2:
                 sample = scenario[patient["id"]]
                 hours, travel = sample["service_hours"], sample["travel_time"]
                 scenario_costs["service_cost"] += hours * float(patient.get("service_cost_rate", 50) or 0)
-                scenario_costs["waiting_cost"] += max(0, float(caregiver.get("delay", 0) or 0) + travel) * float(patient.get("waiting_cost_rate", 0) or 0)
+                arrival_time = float(assignment.get("arrival_time", 0) or 0)
+                window = assignment.get("time_window") or self._time_windows(patient)[0]
+                earliest, latest = window
+                waiting = max(0.0, earliest - arrival_time)
+                tardiness = max(0.0, arrival_time - latest)
+                scenario_costs["waiting_cost"] += waiting * float(patient.get("waiting_cost_rate", 0) or 0)
+                scenario_costs["delay_penalty"] += tardiness * float(patient.get("delay_penalty_rate", 2) or 0)
                 scenario_costs["travel_cost"] += travel * float(patient.get("travel_cost_rate", 0.5) or 0)
-                scenario_costs["delay_penalty"] += float(caregiver.get("delay", 0) or 0) * float(patient.get("delay_penalty_rate", 2) or 0)
                 added_hours[caregiver["id"]] += hours
 
             workloads = []
@@ -224,8 +236,6 @@ class NSGA2:
         summary: dict[str, float | int] = {
             "served_patients": served_count,
             "unassigned_patients": len(self.patients) - served_count,
-            # La couverture étant son propre objectif, on mesure ici la qualité
-            # des affectations réellement réalisées.
             "satisfaction_percent": round(satisfaction / served_count, 2) if served_count else 0,
             "average_assigned_skill_level": round(
                 sum(self._skill_level(self.caregivers_by_id[item["caregiver_id"]]) for item in solution) / served_count,
@@ -281,13 +291,17 @@ class NSGA2:
         for _ in range(self.population_size):
             solution = self.create_solution()
             objectives, summary = self.evaluate(solution)
-            population.append({"solution": solution, "objectives": objectives, "summary": summary})
+            routes, unassigned = assignment_to_routes(solution, {"patients": self.patients, "caregivers": self.caregivers})
+            candidate = {"solution": solution, "objectives": objectives, "summary": summary, "routes": routes, "unassigned_patients": unassigned}
+            population.append(candidate)
         for _ in range(self.generations):
             offspring = []
             for _ in range(self.population_size):
                 solution = self.create_solution()
                 objectives, summary = self.evaluate(solution)
-                offspring.append({"solution": solution, "objectives": objectives, "summary": summary})
+                routes, unassigned = assignment_to_routes(solution, {"patients": self.patients, "caregivers": self.caregivers})
+                candidate = {"solution": solution, "objectives": objectives, "summary": summary, "routes": routes, "unassigned_patients": unassigned}
+                offspring.append(candidate)
             population = self.pareto_front(population + offspring)
             population.sort(key=lambda candidate: tuple(candidate["objectives"]))
             population = population[:self.population_size]

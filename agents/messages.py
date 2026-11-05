@@ -31,6 +31,9 @@ class MessageLog:
         self.messages: list[Message] = []
 
     def record(self, sender: str, receiver: str, type: str, payload: dict | None = None) -> Message:
+        if isinstance(type, dict):
+            payload = type
+            type = "message"
         message = Message(sender=sender, receiver=receiver, type=type, payload=dict(payload or {}))
         self.messages.append(message)
         return message
@@ -44,7 +47,10 @@ class MessageLog:
         return len(self.messages)
 
     def by_type(self) -> dict[str, int]:
-        return dict(Counter(message.type for message in self.messages))
+        counts: Counter[str] = Counter()
+        for message in self.messages:
+            counts[message.type] += 1
+        return dict(counts)
 
     def clear(self) -> None:
         self.messages.clear()

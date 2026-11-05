@@ -21,45 +21,40 @@ class Retriever:
         return re.sub(r"\s+", " ", without_accents.casefold()).strip()
 
     def retrieve(self, query: str, top_k: int | None = None) -> list[dict]:
-        """
-        Recherche les documents les plus pertinents.
-        """
+        """Retrouve uniquement les règles pertinentes pour la requête."""
 
         normalized_query = self._normalize(query)
+        if not normalized_query:
+            return []
 
         documents = self.knowledge_base.get_all_documents()
-
         results = []
 
         for document in documents:
-
-            # Les contraintes n'ont pas encore de keywords
-            if "keywords" not in document:
+            if "keywords" not in document or not document.get("id", "").startswith(("R", "C")):
                 continue
 
             score = 0
-
             for keyword in document["keywords"]:
-
                 normalized_keyword = self._normalize(keyword)
                 if normalized_keyword and normalized_keyword in normalized_query:
-
                     score += 1
 
             if score > 0:
+                results.append({"document": document, "score": score})
 
-                results.append({
+        has_urgent_signal = bool(re.search(r"\b(?:urgent|emergency|priority|critical)\b", normalized_query))
+        has_delay_signal = bool(re.search(r"\b(?:delay|delayed|late|retard|traffic)\b", normalized_query))
+        if has_urgent_signal and has_delay_signal:
+            results = [item for item in results if item["document"]["id"].startswith("R")]
+        elif has_delay_signal:
+            results = [item for item in results if item["document"]["id"].startswith(("R", "C"))]
+        else:
+            results = [item for item in results if item["document"]["id"].startswith("R")]
 
-                    "document": document,
-
-                    "score": score
-
-                })
-
-        # Trier du meilleur score au plus faible
         results.sort(key=lambda result: (-result["score"], result["document"]["id"]))
 
         if top_k is not None:
-            return results[:max(0, top_k)]
+            return results[: max(0, top_k)]
 
         return results

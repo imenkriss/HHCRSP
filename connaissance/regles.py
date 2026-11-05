@@ -1,50 +1,96 @@
 RULES = [
     {
         "id": "R001",
-
         "category": "Priority",
-
-        "keywords": [
-            "urgent",
-            "priority",
-            "emergency"
-        ],
-
-        "condition":
-        "patient.priority == HIGH",
-
-        "action":
-        "Schedule patient before all others.",
-
-        "objective":
-        "Patient Satisfaction",
-
-        "description":
-        "High-priority patients must always be served before lower-priority patients."
+        "keywords": ["urgent", "priority", "emergency"],
+        "text": "urgent patient priority emergency",
+        "condition": "patient.priority == HIGH",
+        "action": "Schedule patient before all others.",
+        "objective": "Patient Satisfaction",
+        "description": "High-priority patients must always be served before lower-priority patients.",
     },
-
     {
         "id": "R002",
-
         "category": "Caregiver Delay",
-
-        "keywords": [
-            "delay",
-            "late",
-            "retard"
-        ],
-
-        "condition":
-        "caregiver.delay > 20",
-
-        "action":
-        "Reassign the patient to another available caregiver.",
-
-        "objective":
-        "Service Cost",
-
-        "description":
-        "A delayed caregiver can be replaced if the delay exceeds 20 minutes."
-    }
-
+        "keywords": ["delay", "late", "retard"],
+        "text": "caregiver delay late or retard",
+        "condition": "caregiver.delay > 20",
+        "action": "Reassign the patient to another available caregiver.",
+        "objective": "Service Cost",
+        "description": "A delayed caregiver can be replaced if the delay exceeds 20 minutes.",
+    },
+    {
+        "id": "R003",
+        "category": "Cancellation",
+        "keywords": ["cancel", "cancellation", "withdraw"],
+        "text": "patient cancellation or withdrawal",
+        "condition": "patient.cancelled == True",
+        "action": "Remove the appointment and free the caregiver slot.",
+        "objective": "Service Cost",
+        "description": "Cancelled appointments must be removed from the schedule immediately.",
+    },
+    {
+        "id": "R004",
+        "category": "Vehicle Breakdown",
+        "keywords": ["breakdown", "vehicle", "repair"],
+        "text": "vehicle breakdown or repair",
+        "condition": "caregiver.breakdown == True",
+        "action": "Assign a replacement caregiver while preserving continuity.",
+        "objective": "Service Cost",
+        "description": "A caregiver outage requires a rapid replacement to keep patient continuity.",
+    },
+    {
+        "id": "R005",
+        "category": "Conflict",
+        "keywords": ["conflict", "competition", "same caregiver"],
+        "text": "multiple critical patients compete for one caregiver",
+        "condition": "critical_patients > 1 for the same caregiver",
+        "action": "Prioritise the most urgent patient.",
+        "objective": "Patient Satisfaction",
+        "description": "When several critical patients request the same caregiver, the most urgent one is served first.",
+    },
+    {
+        "id": "R006",
+        "category": "Caregiver Exchange",
+        "keywords": ["exchange", "reassign", "replace"],
+        "text": "caregiver exchange or reassign patient",
+        "condition": "caregiver_exchange == True",
+        "action": "Coordinate with the orchestrator and replace the caregiver.",
+        "objective": "Service Cost",
+        "description": "When care assignments conflict, a caregiver exchange can preserve continuity.",
+    },
+    {
+        "id": "R007",
+        "category": "Skill Compatibility",
+        "keywords": ["skill", "compatible", "qualification"],
+        "text": "caregiver skill compatibility",
+        "condition": "caregiver.skill >= patient.required_skill",
+        "action": "Only assign compatible caregivers to specialized cases.",
+        "objective": "Quality",
+        "description": "Specialized patients must be assigned only to caregivers with enough skill.",
+    },
+    {
+        "id": "R008",
+        "category": "Time Window",
+        "keywords": ["time", "window", "schedule", "appointment"],
+        "text": "patient time window schedule",
+        "condition": "service within selected time window",
+        "action": "Respect the patient time window and avoid late visits.",
+        "objective": "Patient Satisfaction",
+        "description": "Visits must fit selected patient time windows to avoid tardiness.",
+    },
+    {
+        "id": "R009",
+        "category": "Workload",
+        "keywords": ["workload", "balance", "hours"],
+        "text": "caregiver workload and hours balance",
+        "condition": "workload variance must be controlled",
+        "action": "Balance caregiver workloads to keep the mission fair.",
+        "objective": "Workload Balance",
+        "description": "Workload should remain balanced across caregivers to prevent overtime and fatigue.",
+    },
 ]
+
+
+def load_rules():
+    return [dict(rule) for rule in RULES]

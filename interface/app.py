@@ -1,14 +1,12 @@
 import os
 import sys
-
+import pandas as pd
+import streamlit as st
 # on ajoute le dossier parent au sys.path pour retrouver le module main.
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
-
-import pandas as pd
-import streamlit as st
 
 from main import (
     DEFAULT_QUERY,
@@ -65,7 +63,7 @@ if results is not None and not has_current_results:
 
 if has_current_results:
     # 1. Dataset
-    st.header("1. Dataset HHCOP")
+    st.header("1. HHCOP data")
 
     col1, col2 = st.columns(2)
 
