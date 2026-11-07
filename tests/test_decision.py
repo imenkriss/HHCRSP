@@ -78,5 +78,26 @@ def test_legacy_dict_front_uses_documented_rule():
     assert chosen is front[1]  # fewer unassigned patients wins first
 
 
+def test_optimizer_dict_solution_is_returned_as_assignments_and_visit_plan():
+    candidate = {
+        "summary": {
+            "unassigned_patients": 0,
+            "satisfaction_percent": 80,
+            "total_cost": 10,
+            "workload_variance": 2,
+        },
+        "solution": [
+            {"patient_id": "P1", "caregiver_id": "C1", "service_start": 30},
+        ],
+    }
+
+    selection = DecisionEngine().select_from_pareto_set([candidate])
+
+    assert selection["assignments"] == [{"patient_id": "P1", "caregiver_id": "C1"}]
+    assert selection["visit_plan"] == [
+        {"patient_id": "P1", "caregiver_id": "C1", "service_start": 30.0}
+    ]
+
+
 def test_default_weights_cover_three_objectives():
     assert set(DEFAULT_WEIGHTS) == {"cost", "satisfaction", "balance"}

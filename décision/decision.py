@@ -156,6 +156,18 @@ class DecisionEngine:
             for patient_id in getattr(route, "patient_ids", []):
                 assignments.append({"patient_id": patient_id, "caregiver_id": caregiver_id})
                 visit_plan.append({"patient_id": patient_id, "caregiver_id": caregiver_id, "service_start": float(len(visit_plan) + 1)})
+        if not assignments and isinstance(candidate, dict):
+            for item in candidate.get("solution", []):
+                patient_id = item.get("patient_id")
+                caregiver_id = item.get("caregiver_id")
+                if patient_id is None or caregiver_id is None:
+                    continue
+                assignments.append({"patient_id": patient_id, "caregiver_id": caregiver_id})
+                visit_plan.append({
+                    "patient_id": patient_id,
+                    "caregiver_id": caregiver_id,
+                    "service_start": float(item.get("service_start", len(visit_plan) + 1)),
+                })
         if not assignments:
             if hasattr(candidate, "permutation"):
                 for patient_id in getattr(candidate, "permutation", tuple()):

@@ -69,7 +69,7 @@ class LLMRaisonner:
             elif doc_id.startswith("C"):
                 constraints.append(doc_id)
             if not doc_id and text:
-                candidate = text.strip().split()[0]
+                candidate = text.strip().split()[0] if text.strip() else ""
                 if candidate.startswith("R"):
                     relevant_rules.append(candidate)
                 elif candidate.startswith("C"):
@@ -90,8 +90,8 @@ class LLMRaisonner:
         lower = query.lower()
         patient_id = None
         caregiver_id = None
-        urgency = bool(re.search(r"\b(?:urgent|emergency|priority|critical)\b", lower))
-        delayed = bool(re.search(r"\b(?:delay(?:ed)?|late|retard|traffic)\b", lower))
+        urgency = bool(re.search(r"\b(?:urgent|emergency|priority|critical|urgence|prioritaire|critique)\b", lower))
+        delayed = bool(re.search(r"\b(?:delay(?:ed)?|late|retard|traffic|bouchon)\b", lower))
 
         match = re.search(r"\bP\d+\b", query, re.IGNORECASE)
         if match:
@@ -107,7 +107,7 @@ class LLMRaisonner:
             request_type = "patient_info"
         elif caregiver_id and delayed:
             request_type = "caregiver_info"
-        elif re.search(r"\bvehicle\b|\bbreakdown\b|\brepair\b", lower):
+        elif re.search(r"\bvehicle\b|\bbreakdown\b|\brepair\b|\bvéhicule\b|\bpandne\b", lower):
             request_type = "vehicle_info"
 
         relevant_rules, constraints = self._extract_rule_ids(retrieved_docs)
@@ -119,9 +119,7 @@ class LLMRaisonner:
             relevant_rules = ["R002"]
         if not constraints and "time window" in lower:
             constraints = ["C003"]
-        if not patient_id and not caregiver_id and not urgency and not delayed:
-            patient_id = None
-            caregiver_id = None
+
         return {
             "query": query,
             "request_type": request_type,
@@ -158,9 +156,7 @@ class LLMRaisonner:
                         ),
                     },
                 ],
-                format=ReasoningResult.model_json_schema(),
-                think=False,
-                keep_alive="10m",
+                format=ReasoningResult,  # Support direct de la classe Pydantic
                 options={
                     "temperature": 0,
                     "num_ctx": 2048,
@@ -175,5 +171,6 @@ class LLMRaisonner:
                 "reasoning_source": "ollama",
             }
             return payload
-        except Exception:
+        except Exception as e:
+            print(f"[AVERTISSEMENT] Échec de l'appel Ollama ({e}). Utilisation du mode fallback.")
             return self._fallback(query, retrieved_docs)

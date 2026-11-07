@@ -30,11 +30,18 @@ class MessageLog:
     def __init__(self):
         self.messages: list[Message] = []
 
-    def record(self, sender: str, receiver: str, type: str, payload: dict | None = None) -> Message:
-        if isinstance(type, dict):
-            payload = type
-            type = "message"
-        message = Message(sender=sender, receiver=receiver, type=type, payload=dict(payload or {}))
+    def record(self, sender: str, receiver: str, msg_type: str, payload: dict | None = None) -> Message:
+        # Sécurité au cas où le payload serait passé à la place du type
+        if isinstance(msg_type, dict):
+            payload = msg_type
+            msg_type = "message"
+            
+        message = Message(
+            sender=sender, 
+            receiver=receiver, 
+            type=msg_type, 
+            payload=dict(payload or {})
+        )
         self.messages.append(message)
         return message
 

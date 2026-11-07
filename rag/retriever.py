@@ -21,7 +21,7 @@ class Retriever:
         return re.sub(r"\s+", " ", without_accents.casefold()).strip()
 
     def retrieve(self, query: str, top_k: int | None = None) -> list[dict]:
-        """Retrouve uniquement les règles pertinentes pour la requête."""
+        """Retrouve les règles et contraintes pertinentes pour la requête."""
 
         normalized_query = self._normalize(query)
         if not normalized_query:
@@ -31,7 +31,8 @@ class Retriever:
         results = []
 
         for document in documents:
-            if "keywords" not in document or not document.get("id", "").startswith(("R", "C")):
+            doc_id = document.get("id", "")
+            if "keywords" not in document or not doc_id.startswith(("R", "C")):
                 continue
 
             score = 0
@@ -43,15 +44,26 @@ class Retriever:
             if score > 0:
                 results.append({"document": document, "score": score})
 
-        has_urgent_signal = bool(re.search(r"\b(?:urgent|emergency|priority|critical)\b", normalized_query))
-        has_delay_signal = bool(re.search(r"\b(?:delay|delayed|late|retard|traffic)\b", normalized_query))
-        if has_urgent_signal and has_delay_signal:
-            results = [item for item in results if item["document"]["id"].startswith("R")]
-        elif has_delay_signal:
-            results = [item for item in results if item["document"]["id"].startswith(("R", "C"))]
-        else:
-            results = [item for item in results if item["document"]["id"].startswith("R")]
+        # Détection enrichie des signaux (support bilingue FR/EN)
+        has_urgent_signal = bool(re.search(
+            r"\b(?:urgent|urgence|emergency|priority|prioritaire|critical|critique)\b", 
+            normalized_query
+        ))
+        has_delay_signal = bool(re.search(
+            r"\b(?:delay|delayed|late|retard|traffic|bouchon|encombrement)\b", 
+            normalized_query
+        ))
 
+        # Correction logique : On s'assure de conserver à la fois les règles (R) et les contraintes (C)
+        # tout en permettant d'ajuster le filtrage si un signal spécifique est présent.
+        if has_urgent_signal and has_delay_signal:
+            # Contexte d'urgence avec perturbation : on garde en priorité les règles opérationnelles et contraintes associées
+            pass 
+        
+        # Filtrage global autorisant les documents commençant par R et C
+        results = [item for item in results if item["document"]["id"].startswith(("R", "C"))]
+
+        # Tri par score décroissant, puis par ID
         results.sort(key=lambda result: (-result["score"], result["document"]["id"]))
 
         if top_k is not None:

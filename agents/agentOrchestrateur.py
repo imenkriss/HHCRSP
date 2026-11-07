@@ -105,8 +105,9 @@ class Orchestrator:
         return {"status": "cancelled", "patient_id": patient_id, "removed_caregiver": removed}
 
     def handle_vehicle_breakdown(self, caregiver_id: str, patient_id: str | None = None):
-        caregiver = self.caregivers_by_id[caregiver_id]
-        caregiver["available"] = False
+        caregiver = self.caregivers_by_id.get(caregiver_id)
+        if caregiver:
+            caregiver["available"] = False
         self.log.record(caregiver_id, "orchestrator", "vehicle_breakdown", {"patient_id": patient_id})
 
         if patient_id is None:
@@ -140,7 +141,7 @@ class Orchestrator:
         return {"status": "replaced", "replacements": {}, "patient_id": patient_id}
 
     def handle_critical_conflict(self, patient_a: str, patient_b: str, caregiver_id: str):
-        priorities = {patient: self.patients_by_id[patient]["priority"] for patient in (patient_a, patient_b)}
+        priorities = {patient: self.patients_by_id[patient].get("priority", "Normal") for patient in (patient_a, patient_b)}
         is_a_critical = priorities[patient_a] == "Critical"
         is_b_critical = priorities[patient_b] == "Critical"
         if is_a_critical and not is_b_critical:
@@ -151,8 +152,10 @@ class Orchestrator:
             winner, loser = patient_a, patient_b
         else:
             winner, loser = patient_b, patient_a
+        
         self.assignments[winner] = caregiver_id
-        self.log.record("orchestrator", "conflict", {"winner": winner, "loser": loser, "caregiver_id": caregiver_id})
+        # Correction : 4 arguments passés à record pour éviter le TypeError
+        self.log.record("orchestrator", "system", "critical_conflict", {"winner": winner, "loser": loser, "caregiver_id": caregiver_id})
         self.interaction_count = self.log.count
         return {"status": "conflict_resolved", "winner": winner, "loser": loser, "caregiver_id": caregiver_id}
 

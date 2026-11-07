@@ -32,7 +32,7 @@ with st.form("pipeline_form"):
     model = st.text_input("Modèle Ollama :", "qwen3:4b")
     run_requested = st.form_submit_button("Exécuter le système")
 
-if "analysis_results" not in st.session_state:
+
     st.session_state.analysis_results = None
 
 if run_requested:
@@ -153,7 +153,7 @@ if has_current_results:
 
             st.dataframe(
                 df_complexity,
-                use_container_width=True
+                width='stretch'
             )
 
             chart_data = df_complexity.rename(
@@ -231,7 +231,7 @@ if has_current_results:
                 theoretical_data.items(),
                 columns=["Opération", "Complexité"]
             ),
-            use_container_width=True,
+            width='stretch',
             hide_index=True,
         )
 
@@ -277,3 +277,10 @@ if has_current_results:
             st.json(selected_optimization.get("summary", {}))
     else:
         st.info("Aucune solution d'optimisation disponible.")
+
+orchestration = results.get("orchestration_output", {})
+print("DEBUG ORCHESTRATEUR -> LLM Output:", orchestration.get("llm_output"))
+print("DEBUG ORCHESTRATEUR -> Patient Info:", orchestration .get("patient_info"))
+print("DEBUG ORCHESTRATEUR -> Candidats:", orchestration.get("candidate_caregivers"))
+if "analysis_results" not in st.session_state:
+    st.session_state.analysis_results = None

@@ -45,6 +45,7 @@
   "tests/test_decision.py::test_empty_pareto_set_returns_none",
   "tests/test_decision.py::test_invalid_method_rejected",
   "tests/test_decision.py::test_legacy_dict_front_uses_documented_rule",
+  "tests/test_decision.py::test_optimizer_dict_solution_is_returned_as_assignments_and_visit_plan",
   "tests/test_decision.py::test_select_returns_plan_and_real_justification",
   "tests/test_decision.py::test_selection_is_deterministic",
   "tests/test_decision.py::test_visit_plan_is_time_ordered",

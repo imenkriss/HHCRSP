@@ -114,8 +114,8 @@ class NSGA2:
         normalized = []
         for window in windows:
             if isinstance(window, dict):
-                start = window.get("start", window.get("ready_time"))
-                end = window.get("end", window.get("due_date"))
+                start = window.get("start", window.get("ready_time", 0))
+                end = window.get("end", window.get("due_date", float("inf")))
             else:
                 start, end = window
             start, end = float(start), float(end)
@@ -151,7 +151,17 @@ class NSGA2:
         """Construit une affectation respectant les fenêtres et capacités déclarées."""
         solution: list[dict] = []
         added_max_hours = {caregiver["id"]: 0.0 for caregiver in self.caregivers}
-        patients = sorted(self.patients, key=lambda patient: {"Critical": 0, "High": 1, "Medium": 2}.get(patient.get("priority"), 3))
+        
+        # Tri sécurisé insensible à la casse des priorités
+        priority_map = {"critical": 0, "high": 1, "medium": 2}
+        patients = sorted(
+            self.patients, 
+            key=lambda p: priority_map.get(str(p.get("priority", "normal")).lower(), 3)
+        )
+        
+        # Suivi basique du temps cumulé par soignant pour estimer l'arrival_time
+        caregiver_current_time = {caregiver["id"]: 8.0 for caregiver in self.caregivers} # Départ type à 8h00
+
         for patient in patients:
             service_min, service_max = self._service_hours_range(patient)
             hours = (service_min + service_max) / 2
@@ -170,14 +180,23 @@ class NSGA2:
             if not candidates:
                 continue
             caregiver = self.random.choice(candidates)
-            added_max_hours[caregiver["id"]] += service_max
+            c_id = caregiver["id"]
+            added_max_hours[c_id] += service_max
+            
             travel_min, travel_max = self._travel_time_range(patient)
+            travel_time_val = (travel_min + travel_max) / 2
+            
+            # Estimation de l'heure d'arrivée (en heures ou minutes selon l'unité du modèle)
+            arrival_time = caregiver_current_time[c_id] + (travel_time_val / 60.0)
+            caregiver_current_time[c_id] = max(window[0], arrival_time) + hours
+
             solution.append({
                 "patient_id": patient["id"],
-                "caregiver_id": caregiver["id"],
+                "caregiver_id": c_id,
                 "service_hours": hours,
-                "travel_time": (travel_min + travel_max) / 2,
+                "travel_time": travel_time_val,
                 "time_window": window,
+                "arrival_time": arrival_time,
             })
         return solution
 
@@ -203,11 +222,13 @@ class NSGA2:
                 sample = scenario[patient["id"]]
                 hours, travel = sample["service_hours"], sample["travel_time"]
                 scenario_costs["service_cost"] += hours * float(patient.get("service_cost_rate", 50) or 0)
+                
                 arrival_time = float(assignment.get("arrival_time", 0) or 0)
                 window = assignment.get("time_window") or self._time_windows(patient)[0]
                 earliest, latest = window
                 waiting = max(0.0, earliest - arrival_time)
                 tardiness = max(0.0, arrival_time - latest)
+                
                 scenario_costs["waiting_cost"] += waiting * float(patient.get("waiting_cost_rate", 0) or 0)
                 scenario_costs["delay_penalty"] += tardiness * float(patient.get("delay_penalty_rate", 2) or 0)
                 scenario_costs["travel_cost"] += travel * float(patient.get("travel_cost_rate", 0.5) or 0)
@@ -218,12 +239,13 @@ class NSGA2:
             for caregiver in self.caregivers:
                 workload = float(caregiver.get("current_workload", 0) or 0) + added_hours[caregiver["id"]]
                 workloads.append(workload)
-                overtime = max(0, workload - float(caregiver.get("max_work_hours", 0) or 0))
+                overtime = max(0.0, workload - float(caregiver.get("max_work_hours", 0) or 0))
                 scenario_overtime_hours += overtime
                 scenario_costs["overtime_cost"] += overtime * float(caregiver.get("overtime_cost_rate", 30) or 0)
+            
             scenario_costs["fixed_cost"] = sum(
-                float(self.caregivers_by_id[caregiver_id].get("fixed_cost", 10) or 0)
-                for caregiver_id in used_caregivers
+                float(self.caregivers_by_id[c_id].get("fixed_cost", 10) or 0)
+                for c_id in used_caregivers
             )
             average = sum(workloads) / len(workloads) if workloads else 0
             variance = sum((workload - average) ** 2 for workload in workloads) / len(workloads) if workloads else 0
@@ -251,8 +273,6 @@ class NSGA2:
 
     def evaluate(self, solution: list[dict]) -> tuple[list[float], dict[str, Any]]:
         summary = self._summary(solution)
-        # NSGA-II minimise chaque objectif; ils restent séparés afin qu'aucune
-        # pénalité arbitraire ne masque la couverture ou la satisfaction.
         return [
             summary["total_cost"],
             float(summary["unassigned_patients"]),
@@ -273,7 +293,6 @@ class NSGA2:
                 for other in population
             )
         ]
-        # Plusieurs tirages peuvent produire exactement la même affectation.
         unique_front = []
         signatures = set()
         for candidate in front:
