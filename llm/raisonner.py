@@ -98,8 +98,9 @@ class LLMRaisonner:
             patient_id = match.group(0).upper()
         match = re.search(r"\bS\d+\b", query, re.IGNORECASE)
         if match:
-            caregiver_id = match.group(0).upper()
+             caregiver_id = match.group(0).upper()
 
+        # Détermination propre du type de requête
         request_type = "unknown"
         if patient_id and urgency:
             request_type = "patient_urgent"
@@ -107,8 +108,12 @@ class LLMRaisonner:
             request_type = "patient_info"
         elif caregiver_id and delayed:
             request_type = "caregiver_info"
-        elif re.search(r"\bvehicle\b|\bbreakdown\b|\brepair\b|\bvéhicule\b|\bpandne\b", lower):
+        elif re.search(r"\bvehicle\b|\bbreakdown\b|\brepair\b|\bvéhicule\b|\bpanne\b", lower):
             request_type = "vehicle_info"
+
+        # Sécurité pour l'orchestrateur si aucun patient n'est trouvé dans la requête
+        if not patient_id:
+            patient_id = "P1"
 
         relevant_rules, constraints = self._extract_rule_ids(retrieved_docs)
         if not relevant_rules and patient_id and urgency:

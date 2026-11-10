@@ -275,8 +275,8 @@ class NSGA2:
         summary = self._summary(solution)
         return [
             summary["total_cost"],
-            float(summary["unassigned_patients"]),
-            -float(summary["satisfaction_percent"]),
+            float(summary["unassigned_patients"]), #les autres valeurs sont inversé au signe(+) aussi
+            -float(summary["satisfaction_percent"]), #le signe(-)est utilisé pour inverser la valeur
             float(summary["workload_variance"]),
         ], summary
 
