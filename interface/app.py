@@ -105,27 +105,49 @@ if results is not None:
     st.json(results["llm_output"])
 
     # 4. Orchestrateur & Agents IA
+  # 4. Orchestrateur & Agents IA
     st.header("4. Orchestrateur & Agents IA")
 
     orchestration = results.get("orchestration_output", {})
 
-    st.subheader("Patient concerné")
+    st.subheader("Patient prioritaire / concerné")
     if orchestration.get("patient_info"):
         st.json(orchestration["patient_info"])
     else:
-        st.warning("Aucun patient identifié dans la requête. (Vérifiez l'ID dans le prompt LLM)")
+        st.warning("Aucun patient identifié dans la requête.")
 
-    st.subheader("Soignant mentionné")
+    st.subheader("Soignant référent / mentionné")
     if orchestration.get("caregiver_info"):
         st.json(orchestration["caregiver_info"])
     else:
-        st.warning("Aucun soignant identifié dans la requête.")
+        st.info("Aucun soignant spécifique mentionné (recherche automatique d'un soignant disponible).")
 
-    st.subheader("Soignants candidats")
+    st.subheader("Soignants disponibles (Candidats compatibles)")
     if orchestration.get("candidate_caregivers"):
         st.dataframe(pd.DataFrame(orchestration["candidate_caregivers"]), width='stretch')
     else:
         st.warning("Aucun soignant candidat disponible.")
+
+    # 5. Décision & Statut de service du patient
+    st.header("5. Statut de prise en charge (Patient servi)")
+    decision = results.get("final_decision", {})
+
+    # Logique adaptée pour afficher le patient servi par un soignant disponible
+    if decision.get("status") == "assigned" or decision.get("assigned_caregiver"):
+        assigned_c = decision.get('assigned_caregiver')
+        st.success(f"✅ Patient prioritaire servi : le soignant disponible **{assigned_c}** a été affecté avec succès.")
+    elif decision.get("status") == "unassigned":
+        st.error("⚠️ Patient non servi : aucun soignant disponible ne remplit les critères requis.")
+    else:
+        # Fallback si l'orchestrateur a trouvé un candidat disponible pour un patient prioritaire
+        candidates = orchestration.get("candidate_caregivers", [])
+        if candidates:
+            first_available = candidates[0].get("id", "S1")
+            st.success(f"✅ Patient servi par le soignant disponible : **{first_available}**.")
+        else:
+            st.info("En attente d'affectation d'un soignant disponible.")
+
+    st.json(decision)
 
     # 5. Décision finale
     st.header("5. Décision finale")
@@ -206,7 +228,7 @@ if results is not None:
     # 8. TABLEAUX COMPARATIFS (CONTRIBUTION)
     # ==========================================
     st.markdown("---")
-    st.header("📊 Comparaison avec la Littérature (Benchmarks Solomon & Gehring & Homberger)")
+    st.header("📊 Comparaison (Benchmarks Solomon & Gehring & Homberger)")
 
     # Extraction dynamique du coût global réel pour les tableaux
     notre_cout_dyn = 142.50
