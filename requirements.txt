@@ -1,11 +1,18 @@
-streamlit
-pandas
-langchain
-llm
-langchain-chroma
-langchain-ollama
-pydantic
-ollama
-scikit-learn
-nsga2
-pymoo
+# Runtime dependencies (CPU-only; no CUDA/GPU package required).
+streamlit>=1.40
+pandas>=2.0
+numpy>=1.26
+scikit-learn>=1.3
+pydantic>=2.0
+ollama>=0.4          # optional at run time: only used when USE_OLLAMA=1
+psutil>=5.9          # peak RSS measurement (ResourceMonitor)
+
+# Tests
+pytest>=8.0
+
+# Optional: faster hypervolume computation in complexity/metrics.py.
+# The project has a pure-Python fallback, so pymoo is not required.
+# pymoo>=0.6
+
+# Removed: langchain, langchain-chroma, langchain-ollama (never imported),
+# and the non-existent PyPI names "llm" and "nsga2" that broke `pip install -r`.

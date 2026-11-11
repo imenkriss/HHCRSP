@@ -227,3 +227,70 @@ skill and availability constraints, so a cluster never overrides feasibility.
 
 
 
+
+## Dataset ingestion, working set and integrity (repair of the one-row dataset)
+
+`ASSUMPTION:` The canonical patient source is
+`data/dementia/new_dataset_with_predictions.csv` (1000 rows, 26 columns). The
+81-byte `data/dementia_patients_health_data.csv` (one hard-coded record) and the
+0-byte `data/admin_caregivers.csv` are legacy placeholders: they are kept for
+traceability but are no longer read as patient/caregiver sources. Merging the
+two 1000-row CSVs was rejected because only the binary `Diabetic` column is
+row-identical (AlcoholLevel/HeartRate/Age differ), so the D4 correspondence
+remains an unconfirmed hypothesis.
+
+`ASSUMPTION:` `patient_limit` (default 100) is the number of **first** teacher
+rows entering one optimisation run; the file itself is never truncated or
+rewritten. A contiguous prefix (rather than a random sample) keeps identifiers
+stable (`P7` is always teacher row 7), keeps `P1` addressable by the default UI
+query, and makes the working set checkable against the source. `patient_limit=None`
+loads all 1000 rows.
+
+`ASSUMPTION:` `service_hours = 0.5` (30 min), `required_skill_level = 1` and one
+window `(0, 480)` are used for teacher-CSV patients because the CSV has no
+service duration, skill demand or windows. Generated P11 instances keep the
+paper's values (U[30, 90] service, p_i ~ 50/35/15, multi-windows).
+
+`ASSUMPTION:` the 700 rows with missing `Predictions` get
+`care_type = "General"` in the live pipeline so every caregiver stays
+compatible. The SVM completion (`data.loader.load_predictions_dataset`, D1/D3)
+is not run on every execution: it is slow, and the label is the leaky
+`1 - Diabetic` rule.
+
+`ASSUMPTION:` when `data/admin_caregivers.csv` is empty, caregivers are a
+deterministic scaffold: ids `S1..Sn`, skill `"General"`, skill levels rotating
+over {1, 2, 3}, 8 h shift + 2 h overtime, zero delay, no prior workload, and
+count `ceil(patients / 4)` (P11's 3–5x ratio). They are configuration inputs
+marked `source: "generated"`, never reported as measured workforce data.
+
+`MEASURED:` source integrity is enforced by sha256 + row/column fingerprints
+before and after each run (`data/integrity.py`); any change raises
+`DatasetIntegrityError`. Exports and the embedding cache are written atomically
+under `outputs/` and `data/generated/`; the code refuses to use `data/` as an
+output directory.
+
+## RAG retrieval scope (R2) and chunking
+
+`ASSUMPTION:` the retriever returns **R-series rules only**. C-series
+constraints remain in the knowledge base for the agents/validation layer but are
+not retrieval candidates, per R2 ("Patient P4 is urgent and caregiver S2 is
+delayed" → exactly R001 and R002) and `tests/test_rag_rules.py`. The older
+`rag/test_rag.py` expectation (C003 returned) contradicted this contract and was
+updated; see `docs/REPAIR_REPORT.md` §8.
+
+`ASSUMPTION:` knowledge-base documents are atomic units; the chunker
+(`rag/rag.py::chunk_document`, 400 chars with 50-char overlap) keeps
+`chunk_id`, `document_id`, `chunk_index` and a reference to the parent document.
+In practice each short rule yields one chunk. Chunk vectors are cached on disk
+(`data/generated/embeddings/<embedder>-<dims>.json`) and reused across runs;
+hybrid scores can only re-rank documents already selected by the keyword
+retriever, so embeddings never bypass R2.
+
+## Comparison tables
+
+`ASSUMPTION:` every comparison row is measured. Missing sources (for example
+`ml/results/ml_benchmark.csv`) produce an explicit status message, never filler
+rows. `MTCMOLite` is reported under its own name and is never labelled MTCMO.
+`NSGA-II` in the comparison tab refers to
+`optimisation/mtwmo/algorithms.py::NSGAII`; the UI's main optimiser remains the
+legacy assignment sampler in `optimisation/nsga2.py`.

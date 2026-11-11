@@ -111,9 +111,8 @@ class LLMRaisonner:
         elif re.search(r"\bvehicle\b|\bbreakdown\b|\brepair\b|\bvéhicule\b|\bpanne\b", lower):
             request_type = "vehicle_info"
 
-        # Sécurité pour l'orchestrateur si aucun patient n'est trouvé dans la requête
-        if not patient_id:
-            patient_id = "P1"
+        # Never invent an identifier: an unknown/anonymous query keeps
+        # patient_id None and is reported as unsupported by the orchestrator.
 
         relevant_rules, constraints = self._extract_rule_ids(retrieved_docs)
         if not relevant_rules and patient_id and urgency:

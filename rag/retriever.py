@@ -32,7 +32,10 @@ class Retriever:
 
         for document in documents:
             doc_id = document.get("id", "")
-            if "keywords" not in document or not doc_id.startswith(("R", "C")):
+            # R2: the retriever answers with the *rules* that apply to this
+            # query. Constraints are validation documents used by the agents,
+            # not retrieval candidates (docs/ASSUMPTIONS.md, R1-R4).
+            if "keywords" not in document or not doc_id.startswith("R"):
                 continue
 
             score = 0
@@ -43,25 +46,6 @@ class Retriever:
 
             if score > 0:
                 results.append({"document": document, "score": score})
-
-        # Détection enrichie des signaux (support bilingue FR/EN)
-        has_urgent_signal = bool(re.search(
-            r"\b(?:urgent|urgence|emergency|priority|prioritaire|critical|critique)\b", 
-            normalized_query
-        ))
-        has_delay_signal = bool(re.search(
-            r"\b(?:delay|delayed|late|retard|traffic|bouchon|encombrement)\b", 
-            normalized_query
-        ))
-
-        # Correction logique : On s'assure de conserver à la fois les règles (R) et les contraintes (C)
-        # tout en permettant d'ajuster le filtrage si un signal spécifique est présent.
-        if has_urgent_signal and has_delay_signal:
-            # Contexte d'urgence avec perturbation : on garde en priorité les règles opérationnelles et contraintes associées
-            pass 
-        
-        # Filtrage global autorisant les documents commençant par R et C
-        results = [item for item in results if item["document"]["id"].startswith(("R", "C"))]
 
         # Tri par score décroissant, puis par ID
         results.sort(key=lambda result: (-result["score"], result["document"]["id"]))

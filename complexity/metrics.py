@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+import os
 import time
+import tracemalloc
 from contextlib import contextmanager
 from typing import Any
 
 import numpy as np
+
+try:  # psutil is optional at runtime: tracemalloc still gives a peak.
+    import psutil
+except Exception:  # pragma: no cover - psutil is declared in requirements.txt
+    psutil = None
 
 try:
     from pymoo.indicators.hv import HyperVolume
@@ -72,6 +79,64 @@ def nadir_reference(points: list[tuple[float, ...]], margin: float = 1.0) -> lis
         return []
     dimensions = len(points[0])
     return [max(point[idx] for point in points) + margin for idx in range(dimensions)]
+
+
+class ResourceMonitor:
+    """Measure elapsed CPU/memory cost of a pipeline run on a CPU-only machine.
+
+    ``peak_python_mb`` is the tracemalloc peak of Python allocations (honest,
+    reproducible); ``rss_mb_stop`` is the process resident set at the end and
+    ``peak_rss_mb`` samples the maximum observed at start/stop. No GPU is
+    assumed or measured.
+    """
+
+    def __init__(self, track_allocations: bool = True) -> None:
+        self.track_allocations = track_allocations
+        self._started = False
+        self._started_at = 0.0
+        self._rss_start_mb = 0.0
+        self._rss_peak_mb = 0.0
+
+    @staticmethod
+    def rss_mb() -> float:
+        if psutil is None:
+            return 0.0
+        try:
+            return float(psutil.Process(os.getpid()).memory_info().rss) / (1024 * 1024)
+        except Exception:  # pragma: no cover - platform specific
+            return 0.0
+
+    def start(self) -> "ResourceMonitor":
+        if self.track_allocations and not tracemalloc.is_tracing():
+            tracemalloc.start()
+        self._started_at = time.perf_counter()
+        self._rss_start_mb = self.rss_mb()
+        self._rss_peak_mb = self._rss_start_mb
+        self._started = True
+        return self
+
+    def stop(self) -> dict[str, float | int | bool]:
+        if not self._started:
+            raise RuntimeError("ResourceMonitor.stop() called before start()")
+        elapsed = time.perf_counter() - self._started_at
+        rss_stop = self.rss_mb()
+        self._rss_peak_mb = max(self._rss_peak_mb, rss_stop)
+        peak_python_mb = 0.0
+        if tracemalloc.is_tracing():
+            _, peak = tracemalloc.get_traced_memory()
+            peak_python_mb = peak / (1024 * 1024)
+            if self.track_allocations:
+                tracemalloc.stop()
+        self._started = False
+        return {
+            "wall_time_sec": round(elapsed, 4),
+            "peak_python_mb": round(peak_python_mb, 2),
+            "rss_start_mb": round(self._rss_start_mb, 2),
+            "rss_mb_stop": round(rss_stop, 2),
+            "peak_rss_mb": round(self._rss_peak_mb, 2),
+            "cpu_count": int(os.cpu_count() or 1),
+            "tracemalloc": bool(peak_python_mb > 0.0),
+        }
 
 
 class ComplexityMetrics:
@@ -268,6 +333,10 @@ class ComplexityMetrics:
             "percentage": float(pct),
             "satisfaction_total": float(satisfaction_total),
         }
+
+    def resources(self, usage: dict[str, Any]) -> None:
+        """Record a :class:`ResourceMonitor.stop` payload (M1)."""
+        self.metrics["resources"] = dict(usage)
 
     def get_metrics(self) -> dict[str, dict[str, Any]]:
         return self.metrics.copy()

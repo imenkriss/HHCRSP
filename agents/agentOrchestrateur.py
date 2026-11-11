@@ -93,6 +93,9 @@ class Orchestrator:
         if replacement:
             self.assignments[patient_id] = replacement
             self.log.record("orchestrator", "orchestrator", "assignment", {"patient_id": patient_id, "caregiver_id": replacement})
+            # A4: the redistributed patient must be informed of its new
+            # caregiver, so continuity of care is explicit in the message flow.
+            self.log.record("orchestrator", "patient", "caregiver_reassigned", {"patient_id": patient_id, "caregiver_id": replacement})
             self.interaction_count = self.log.count
             return {"status": "reassigned", "replacement": replacement, "patient_id": patient_id}
         self.interaction_count = self.log.count
