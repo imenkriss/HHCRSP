@@ -314,13 +314,14 @@ class NSGA2:
             candidate = {"solution": solution, "objectives": objectives, "summary": summary, "routes": routes, "unassigned_patients": unassigned}
             population.append(candidate)
         for _ in range(self.generations):
-            offspring = []
+            offspring = [] #Achaque génération on crée une nouvelle population de descendance appeler 'offspring'
             for _ in range(self.population_size):
-                solution = self.create_solution()
+                solution = self.create_solution() #l'algorithme utilise un choix aléatoire (self.random.choice(candidates))
+                #  parmi les soignants compatibles et trie les patients par priorité.
                 objectives, summary = self.evaluate(solution)
                 routes, unassigned = assignment_to_routes(solution, {"patients": self.patients, "caregivers": self.caregivers})
                 candidate = {"solution": solution, "objectives": objectives, "summary": summary, "routes": routes, "unassigned_patients": unassigned}
-                offspring.append(candidate)
+                offspring.append(candidate) #MUTATION:explore de nouvelles combinaisons d'affectations et de tournées
             population = self.pareto_front(population + offspring)
             population.sort(key=lambda candidate: tuple(candidate["objectives"]))
             population = population[:self.population_size]
